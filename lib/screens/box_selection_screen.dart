@@ -39,25 +39,37 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
         appBar: AppBar(
           title: const Text('Карта склада'),
           backgroundColor: const Color(0xFF6C9942),
-          bottom: TabBar(
-            controller: _tabController,
-            indicatorColor: Colors.white, // Белая линия под выбранной вкладкой
-            labelColor: Colors.white, // Белый цвет текста на активной вкладке
-            unselectedLabelColor: Colors.black87, // Цвет для неактивных вкладок
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-            tabs: const [
-              Tab(text: 'XXS'),
-              Tab(text: 'XS'),
-              Tab(text: 'S'),
-              Tab(text: 'M'),
-              Tab(text: 'L'),
-              Tab(text: 'XL'),
-            ],
-            onTap: (index) {
-              setState(() {
-                selectedBox = null;
-              });
-            },
+          bottom: PreferredSize(
+            preferredSize:
+                const Size.fromHeight(60.0), // Увеличиваем высоту для вкладок
+            child: SingleChildScrollView(
+              // Добавляем возможность прокручивать вкладки
+              scrollDirection: Axis.horizontal, // Прокрутка по горизонтали
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor:
+                    Colors.white, // Белая линия под выбранной вкладкой
+                labelColor:
+                    Colors.white, // Белый цвет текста на активной вкладке
+                unselectedLabelColor:
+                    Colors.black87, // Цвет для неактивных вкладок
+                labelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20, // Увеличиваем размер текста на вкладках
+                ),
+                tabs: const [
+                  Tab(text: 'XXS'),
+                  Tab(text: 'XS'),
+                  Tab(text: 'S'),
+                  Tab(text: 'M'),
+                  Tab(text: 'L'),
+                  Tab(text: 'XL'),
+                ],
+                onTap: (index) {
+                  // Мы не сбрасываем выбранный бокс при смене вкладки
+                },
+              ),
+            ),
           ),
         ),
         body: Column(
@@ -79,8 +91,9 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             ),
             // Сцена с 3D моделью или сообщением
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 32.0), // Увеличен отступ сверху и снизу
               child: Container(
                 height: 300,
                 decoration: BoxDecoration(
@@ -100,7 +113,8 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                         autoRotate: true,
                         cameraControls: true,
                         alt:
-                            "3D модель ${selectedBox!.type.name.toUpperCase()}")
+                            "3D модель ${selectedBox!.type.name.toUpperCase()}",
+                      )
                     : Center(
                         child: Text(
                           'Выберите бокс',
@@ -160,7 +174,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
         maxScale: 2.0,
         child: GridView.builder(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 6,
+            crossAxisCount: 6, // Количество колонок
             crossAxisSpacing: 8.0,
             mainAxisSpacing: 8.0,
           ),
@@ -177,6 +191,8 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
+                width: 150, // Увеличиваем ширину карточки
+                height: 150, // Увеличиваем высоту карточки
                 decoration: BoxDecoration(
                   color: box.isAvailable ? const Color(0xFF6C9942) : Colors.red,
                   borderRadius: BorderRadius.circular(12),
