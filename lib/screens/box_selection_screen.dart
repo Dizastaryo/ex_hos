@@ -41,6 +41,10 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
           backgroundColor: const Color(0xFF6C9942),
           bottom: TabBar(
             controller: _tabController,
+            indicatorColor: Colors.white, // Белая линия под выбранной вкладкой
+            labelColor: Colors.white, // Белый цвет текста на активной вкладке
+            unselectedLabelColor: Colors.black87, // Цвет для неактивных вкладок
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold),
             tabs: const [
               Tab(text: 'XXS'),
               Tab(text: 'XS'),
@@ -58,8 +62,9 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
         ),
         body: Column(
           children: [
+            // TabBarView с выбором коробок
             Expanded(
-              flex: 1,
+              flex: 3,
               child: TabBarView(
                 controller: _tabController,
                 children: [
@@ -73,39 +78,35 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
               ),
             ),
             // Сцена с 3D моделью или сообщением
-            Flexible(
-              flex: 1,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0, vertical: 40.0),
-                child: Container(
-                  height: 300,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: selectedBox != null
-                      ? ModelViewer(
-                          src:
-                              "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
-                          autoRotate: true,
-                          cameraControls: true,
-                          alt:
-                              "3D модель ${selectedBox!.type.name.toUpperCase()}")
-                      : Center(
-                          child: Text(
-                            'Выберите бокс',
-                            style:
-                                TextStyle(fontSize: 18, color: Colors.black54),
-                          ),
-                        ),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+              child: Container(
+                height: 300,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
                 ),
+                child: selectedBox != null
+                    ? ModelViewer(
+                        src:
+                            "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
+                        autoRotate: true,
+                        cameraControls: true,
+                        alt:
+                            "3D модель ${selectedBox!.type.name.toUpperCase()}")
+                    : Center(
+                        child: Text(
+                          'Выберите бокс',
+                          style: TextStyle(fontSize: 18, color: Colors.black54),
+                        ),
+                      ),
               ),
             ),
             // Кнопка "Арендовать" только если коробка выбрана
@@ -123,14 +124,21 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                       ),
                     );
                   },
-                  child: const Text('Арендовать'),
+                  child: const Text(
+                    'Арендовать',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white, // Цвет текста кнопки
+                    ),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6C9942),
                     padding: const EdgeInsets.symmetric(vertical: 16.0),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    elevation: 5,
                   ),
                 ),
               ),
@@ -167,13 +175,22 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                   });
                 }
               },
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
                 decoration: BoxDecoration(
                   color: box.isAvailable ? const Color(0xFF6C9942) : Colors.red,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   border: selectedBox == box
-                      ? Border.all(color: Colors.blue, width: 3)
-                      : null,
+                      ? Border.all(color: Colors.black, width: 4)
+                      : Border.all(color: Colors.transparent, width: 2),
+                  boxShadow: [
+                    if (selectedBox == box)
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        spreadRadius: 2,
+                        blurRadius: 10,
+                      ),
+                  ],
                 ),
                 child: Center(
                   child: Text(
@@ -181,6 +198,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
                 ),
