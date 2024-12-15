@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/box_provider.dart';
 import '../models/box_model.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'box_screen.dart'; // Импортируем страницу BoxScreen
 
 class BoxSelectionScreen extends StatefulWidget {
   const BoxSelectionScreen({super.key});
@@ -11,8 +12,22 @@ class BoxSelectionScreen extends StatefulWidget {
   State<BoxSelectionScreen> createState() => _BoxSelectionScreenState();
 }
 
-class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
-  BoxModel? selectedBox; // Переменная для хранения выбранной коробки
+class _BoxSelectionScreenState extends State<BoxSelectionScreen>
+    with TickerProviderStateMixin {
+  BoxModel? selectedBox;
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 6, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,8 +39,9 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
         appBar: AppBar(
           title: const Text('Карта склада'),
           backgroundColor: const Color(0xFF6C9942),
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            controller: _tabController,
+            tabs: const [
               Tab(text: 'XXS'),
               Tab(text: 'XS'),
               Tab(text: 'S'),
@@ -33,6 +49,11 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
               Tab(text: 'L'),
               Tab(text: 'XL'),
             ],
+            onTap: (index) {
+              setState(() {
+                selectedBox = null;
+              });
+            },
           ),
         ),
         body: Column(
@@ -40,6 +61,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
             Expanded(
               flex: 1,
               child: TabBarView(
+                controller: _tabController,
                 children: [
                   _buildBoxGrid(context, boxes, BoxType.xxs),
                   _buildBoxGrid(context, boxes, BoxType.xs),
@@ -50,30 +72,64 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
                 ],
               ),
             ),
-            if (selectedBox !=
-                null) // Показываем 3D модель только если выбрана коробка
-              Expanded(
-                flex: 1,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    height: 300,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
+            // Сцена с 3D моделью или сообщением
+            Flexible(
+              flex: 1,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0, vertical: 40.0),
+                child: Container(
+                  height: 300,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 10,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: selectedBox != null
+                      ? ModelViewer(
+                          src:
+                              "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
+                          autoRotate: true,
+                          cameraControls: true,
+                          alt:
+                              "3D модель ${selectedBox!.type.name.toUpperCase()}")
+                      : Center(
+                          child: Text(
+                            'Выберите бокс',
+                            style:
+                                TextStyle(fontSize: 18, color: Colors.black54),
+                          ),
                         ),
-                      ],
-                    ),
-                    child: ModelViewer(
-                      src:
-                          "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
-                      autoRotate: true,
-                      cameraControls: true,
-                      alt: "3D модель ${selectedBox!.type.name.toUpperCase()}",
+                ),
+              ),
+            ),
+            // Кнопка "Арендовать" только если коробка выбрана
+            if (selectedBox != null)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Переход на страницу BoxScreen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => BoxScreen(
+                            box: selectedBox!), // Передаем выбранную коробку
+                      ),
+                    );
+                  },
+                  child: const Text('Арендовать'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6C9942),
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -107,7 +163,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
               onTap: () {
                 if (box.isAvailable) {
                   setState(() {
-                    selectedBox = box; // Обновляем выбранную коробку
+                    selectedBox = box;
                   });
                 }
               },
@@ -115,6 +171,9 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
                 decoration: BoxDecoration(
                   color: box.isAvailable ? const Color(0xFF6C9942) : Colors.red,
                   borderRadius: BorderRadius.circular(8),
+                  border: selectedBox == box
+                      ? Border.all(color: Colors.blue, width: 3)
+                      : null,
                 ),
                 child: Center(
                   child: Text(
