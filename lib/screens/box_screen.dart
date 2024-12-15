@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../models/box_model.dart';
-import 'payment_screen.dart'; // Экран оплаты
+import 'payment_screen.dart';
 
 class BoxScreen extends StatefulWidget {
   final BoxModel boxModel;
@@ -13,43 +13,42 @@ class BoxScreen extends StatefulWidget {
 }
 
 class _BoxScreenState extends State<BoxScreen> {
-  int? selectedTariff; // Выбранный тариф
-  bool courierNeeded = false; // Флаг для курьера
+  int? selectedTariff;
+  bool courierNeeded = false;
 
-  // Тарифы на основе размера коробки
   List<Map<String, dynamic>> getTariffs(BoxType type) {
     switch (type) {
-      case BoxType.xxsmall:
+      case BoxType.xxs:
         return [
           {'months': 1, 'price': 8000},
           {'months': 2, 'price': 15000},
           {'months': 3, 'price': 21600},
         ];
-      case BoxType.xsmall:
+      case BoxType.xs:
         return [
           {'months': 1, 'price': 3500},
           {'months': 2, 'price': 6500},
           {'months': 3, 'price': 9450},
         ];
-      case BoxType.small:
+      case BoxType.s:
         return [
           {'months': 1, 'price': 10000},
           {'months': 2, 'price': 19000},
           {'months': 3, 'price': 27000},
         ];
-      case BoxType.medium:
+      case BoxType.m:
         return [
           {'months': 1, 'price': 13000},
           {'months': 2, 'price': 24000},
           {'months': 3, 'price': 34200},
         ];
-      case BoxType.large:
+      case BoxType.l:
         return [
           {'months': 1, 'price': 15000},
           {'months': 2, 'price': 28000},
           {'months': 3, 'price': 40500},
         ];
-      case BoxType.xlarge:
+      case BoxType.xl:
         return [
           {'months': 1, 'price': 30000},
           {'months': 2, 'price': 56000},
@@ -71,13 +70,13 @@ class _BoxScreenState extends State<BoxScreen> {
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 3D Модель
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Container(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 3D модель
+              Container(
                 height: 300,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
@@ -90,47 +89,42 @@ class _BoxScreenState extends State<BoxScreen> {
                   ],
                 ),
                 child: ModelViewer(
-                  src: "assets/3d_models/${widget.boxModel.id}.glb",
+                  src:
+                      "assets/3d_models/${widget.boxModel.type.name.toUpperCase()}.glb",
                   autoRotate: true,
                   cameraControls: true,
-                  alt: "3D модель ${widget.boxModel.id}",
+                  alt: "3D модель ${widget.boxModel.type.name.toUpperCase()}",
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
 
-            // Информация о тарифах
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
+              // Заголовок тарифов
+              Text(
                 'Тарифы ${widget.boxModel.id}:',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF6C9942),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            // Список тарифов
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: tariffs.length,
-                itemBuilder: (context, index) {
-                  final tariff = tariffs[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(
-                        vertical: 8.0, horizontal: 16.0),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 5,
-                    shadowColor: Colors.black26,
-                    child: Material(
-                      color: Colors.transparent,
+              // Список тарифов
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: tariffs.length,
+                  itemBuilder: (context, index) {
+                    final tariff = tariffs[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 8.0),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 5,
+                      shadowColor: Colors.black26,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(16),
                         onTap: () {
@@ -150,7 +144,7 @@ class _BoxScreenState extends State<BoxScreen> {
                           child: ListTile(
                             title: Text(
                               '${tariff['months']} месяц(ев): ${tariff['price']} тг',
-                              style: TextStyle(
+                              style: const TextStyle(
                                   fontSize: 16, fontWeight: FontWeight.w600),
                             ),
                             leading: Radio<int>(
@@ -165,16 +159,14 @@ class _BoxScreenState extends State<BoxScreen> {
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
+              const SizedBox(height: 16),
 
-            // Опция "Курьер нужен"
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
+              // Переключатель курьера
+              Row(
                 children: [
                   Transform.scale(
                     scale: 1.2,
@@ -185,7 +177,7 @@ class _BoxScreenState extends State<BoxScreen> {
                           courierNeeded = value;
                         });
                       },
-                      activeColor: Color(0xFF6C9942),
+                      activeColor: const Color(0xFF6C9942),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -195,13 +187,10 @@ class _BoxScreenState extends State<BoxScreen> {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Кнопка "Оплатить"
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: ElevatedButton(
+              // Кнопка для перехода к оплате
+              ElevatedButton(
                 onPressed: selectedTariff != null
                     ? () {
                         final selectedPlan = tariffs[selectedTariff!];
@@ -227,6 +216,7 @@ class _BoxScreenState extends State<BoxScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   elevation: 5,
+                  shadowColor: Colors.black26,
                 ),
                 child: const Center(
                   child: Text(
@@ -235,8 +225,8 @@ class _BoxScreenState extends State<BoxScreen> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

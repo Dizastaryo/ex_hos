@@ -1,9 +1,7 @@
-enum BoxType { xxsmall, xsmall, small, medium, large, xlarge }
-
 class BoxModel {
   final String id;
-  final double width;
-  final double height;
+  final int width;
+  final int height;
   final BoxType type;
   bool isAvailable;
 
@@ -11,7 +9,16 @@ class BoxModel {
     required this.id,
     required this.width,
     required this.height,
-    this.type = BoxType.small,
+    required this.type,
     this.isAvailable = true,
   });
+}
+
+enum BoxType {
+  xxs,
+  xs,
+  s,
+  m,
+  l,
+  xl,
 }

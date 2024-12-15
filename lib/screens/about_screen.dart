@@ -1,9 +1,6 @@
-// lib/screens/about_screen.dart
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:dio/dio.dart';
-import 'package:provider/provider.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -54,26 +51,6 @@ class _AboutScreenState extends State<AboutScreen> {
 
   int _currentIndex = 0;
   double _buttonHeight = 60.0; // Начальная высота кнопки
-
-  Future<void> fetchData() async {
-    final dio = Provider.of<Dio>(context, listen: false);
-    try {
-      final response = await dio.get(
-        'http://172.20.10.3:8080/user-api/v1/user/getWithToken',
-      );
-      print(response.requestOptions.headers);
-
-      if (response.statusCode == 200) {
-        print('Data fetched successfully: ${response.data}');
-        // Здесь можно обработать данные и обновить состояние
-      } else {
-        throw Exception('Error fetching data: ${response.data}');
-      }
-    } catch (e) {
-      print('Error fetching data: $e');
-      // Вы можете показать сообщение об ошибке пользователю
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,57 +125,6 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             ),
             const SizedBox(height: 20), // Уменьшаем пространство до кнопки
-
-            // Кнопка для отправки GET запроса
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: GestureDetector(
-                onTapDown: (_) {
-                  setState(() {
-                    _buttonHeight = 55.0; // Уменьшаем размер при нажатии
-                  });
-                },
-                onTapUp: (_) {
-                  setState(() {
-                    _buttonHeight = 60.0; // Восстанавливаем размер
-                  });
-                },
-                onTapCancel: () {
-                  setState(() {
-                    _buttonHeight = 60.0; // Восстанавливаем размер при отмене
-                  });
-                },
-                onTap: () async {
-                  // Trigger the fetchData function
-                  await fetchData();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  height: _buttonHeight,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C9942),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black38,
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Отправить запрос',
-                    style: GoogleFonts.montserrat(
-                      fontSize: 18, // Увеличиваем размер текста
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
 
             // Кнопка перехода с анимацией
             Padding(

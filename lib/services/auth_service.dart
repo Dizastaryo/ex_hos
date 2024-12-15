@@ -1,4 +1,3 @@
-// lib/services/auth_service.dart
 import 'package:dio/dio.dart';
 
 class AuthService {
@@ -6,11 +5,11 @@ class AuthService {
 
   AuthService(this.dio);
 
-  // Функция отправки OTP
+  // Функция отправки OTP для регистрации
   Future<void> sendOtp(String email) async {
     try {
       final response = await dio.post(
-        'http://172.20.10.3:8080/user-api/v1/auth/sendCode',
+        'http://172.20.10.6:8080/user-api/v1/auth/sendCode',
         data: {'email': email},
       );
 
@@ -24,30 +23,11 @@ class AuthService {
     }
   }
 
-  // Функция логина
-  Future<void> login(String email, String password) async {
-    try {
-      final response = await dio.post(
-        'http://172.20.10.3:8080/user-api/v1/auth/login',
-        data: {'email': email, 'password': password},
-      );
-
-      if (response.statusCode == 200) {
-        print(response.headers); // Проверьте, содержит ли "Set-Cookie".
-        print('Login successful for $email');
-      } else {
-        throw Exception('Login error: ${response.data}');
-      }
-    } catch (e) {
-      throw Exception('Login error: $e');
-    }
-  }
-
-  // Функция проверки OTP
+  // Функция для проверки OTP
   Future<void> verifyOtp(String email, String otp) async {
     try {
       final response = await dio.post(
-        'http://172.20.10.3:8080/user-api/v1/auth/validateCode',
+        'http://172.20.10.6:8080/user-api/v1/auth/validateCode',
         data: {'email': email, 'code': otp},
       );
 
@@ -61,27 +41,46 @@ class AuthService {
     }
   }
 
-  // Функция регистрации пользователя
-  Future<void> registerUser(
-      String email, String password, String role, String status) async {
+  // Функция для регистрации с новым паролем и номером телефона
+  Future<void> completeRegistration(
+      String email, String password, String phoneNumber) async {
     try {
       final response = await dio.post(
-        'http://172.20.10.3:8080/user-api/v1/auth/registration',
+        'http://172.20.10.6:8080/user-api/v1/auth/registration',
         data: {
           'email': email,
           'password': password,
-          'role': role,
-          'status': status,
+          'phoneNumber': phoneNumber,
+          'role': 'USER', // Статичный роль
+          'status': 'OPEN' // Статичный статус
         },
       );
 
-      if (response.statusCode == 200 || response.statusCode == 500) {
+      if (response.statusCode == 200) {
         print('User registered successfully');
       } else {
         throw Exception('Registration error: ${response.data}');
       }
     } catch (e) {
-      throw Exception('Error during registration: $e');
+      throw Exception('Error completing registration: $e');
+    }
+  }
+
+  // Функция логина с email и паролем
+  Future<void> login(String email, String password) async {
+    try {
+      final response = await dio.post(
+        'http://172.20.10.6:8080/user-api/v1/auth/login',
+        data: {'email': email, 'password': password},
+      );
+
+      if (response.statusCode == 200) {
+        print('Login successful');
+      } else {
+        throw Exception('Login error: ${response.data}');
+      }
+    } catch (e) {
+      throw Exception('Login error: $e');
     }
   }
 }

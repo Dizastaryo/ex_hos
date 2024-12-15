@@ -1,90 +1,134 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/box_provider.dart';
-import 'box_screen.dart';
+import '../models/box_model.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 
-class BoxSelectionScreen extends StatelessWidget {
+class BoxSelectionScreen extends StatefulWidget {
   const BoxSelectionScreen({super.key});
+
+  @override
+  State<BoxSelectionScreen> createState() => _BoxSelectionScreenState();
+}
+
+class _BoxSelectionScreenState extends State<BoxSelectionScreen> {
+  BoxModel? selectedBox; // Переменная для хранения выбранной коробки
 
   @override
   Widget build(BuildContext context) {
     final boxes = Provider.of<BoxProvider>(context).boxes;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Выбор бокса для хранение'),
-        backgroundColor: const Color(0xFF6C9942),
-      ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 1,
+    return DefaultTabController(
+      length: 6,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Карта склада'),
+          backgroundColor: const Color(0xFF6C9942),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'XXS'),
+              Tab(text: 'XS'),
+              Tab(text: 'S'),
+              Tab(text: 'M'),
+              Tab(text: 'L'),
+              Tab(text: 'XL'),
+            ],
+          ),
         ),
-        itemCount: boxes.length,
-        itemBuilder: (context, index) {
-          final box = boxes[index];
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BoxScreen(boxModel: box),
-                ),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  colors: box.isAvailable
-                      ? [Colors.green[300]!, Colors.green[100]!]
-                      : [Colors.red[300]!, Colors.red[100]!],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+        body: Column(
+          children: [
+            Expanded(
+              flex: 1,
+              child: TabBarView(
                 children: [
-                  Text(
-                    box.id,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${box.width}x${box.height} см',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Icon(
-                    box.isAvailable ? Icons.check : Icons.close,
-                    color: Colors.white,
-                    size: 36,
-                  ),
+                  _buildBoxGrid(context, boxes, BoxType.xxs),
+                  _buildBoxGrid(context, boxes, BoxType.xs),
+                  _buildBoxGrid(context, boxes, BoxType.s),
+                  _buildBoxGrid(context, boxes, BoxType.m),
+                  _buildBoxGrid(context, boxes, BoxType.l),
+                  _buildBoxGrid(context, boxes, BoxType.xl),
                 ],
               ),
             ),
-          );
-        },
+            if (selectedBox !=
+                null) // Показываем 3D модель только если выбрана коробка
+              Expanded(
+                flex: 1,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    height: 300,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ModelViewer(
+                      src:
+                          "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
+                      autoRotate: true,
+                      cameraControls: true,
+                      alt: "3D модель ${selectedBox!.type.name.toUpperCase()}",
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBoxGrid(
+      BuildContext context, List<BoxModel> boxes, BoxType type) {
+    final filteredBoxes = boxes.where((box) => box.type == type).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: InteractiveViewer(
+        boundaryMargin: const EdgeInsets.all(20),
+        minScale: 0.5,
+        maxScale: 2.0,
+        child: GridView.builder(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 6,
+            crossAxisSpacing: 8.0,
+            mainAxisSpacing: 8.0,
+          ),
+          itemCount: filteredBoxes.length,
+          itemBuilder: (context, index) {
+            final box = filteredBoxes[index];
+            return GestureDetector(
+              onTap: () {
+                if (box.isAvailable) {
+                  setState(() {
+                    selectedBox = box; // Обновляем выбранную коробку
+                  });
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: box.isAvailable ? const Color(0xFF6C9942) : Colors.red,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: Text(
+                    box.id,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

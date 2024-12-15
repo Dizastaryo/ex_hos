@@ -26,14 +26,17 @@ class _MyRentalsScreenState extends State<MyRentalsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Мои аренды', style: GoogleFonts.montserrat(fontSize: 20)),
+        title: Text('Мои аренды',
+            style: GoogleFonts.montserrat(
+                fontSize: 22, fontWeight: FontWeight.w600)),
         backgroundColor: Color(0xFF6C9942),
         elevation: 0, // Убираем тень
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
           labelStyle: GoogleFonts.montserrat(fontWeight: FontWeight.w600),
-          unselectedLabelColor: Colors.black38, // Цвет текста неактивных вкладок
+          unselectedLabelColor:
+              Colors.black38, // Цвет текста неактивных вкладок
           labelColor: Colors.white, // Цвет текста активной вкладки
           tabs: [
             Tab(
@@ -88,7 +91,8 @@ class _MyRentalsScreenState extends State<MyRentalsScreen>
   }
 
   // Модальное окно для отображения информации об аренде
-  void _showRentalDetails(BuildContext context, String title, String subtitle, String size) {
+  void _showRentalDetails(
+      BuildContext context, String title, String subtitle, String size) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -98,7 +102,8 @@ class _MyRentalsScreenState extends State<MyRentalsScreen>
           ),
           title: Text(
             title,
-            style: GoogleFonts.montserrat(fontSize: 20, fontWeight: FontWeight.bold),
+            style: GoogleFonts.montserrat(
+                fontSize: 20, fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -106,12 +111,14 @@ class _MyRentalsScreenState extends State<MyRentalsScreen>
             children: [
               Text(
                 subtitle,
-                style: GoogleFonts.openSans(fontSize: 16, color: Colors.black87),
+                style:
+                    GoogleFonts.openSans(fontSize: 16, color: Colors.black87),
               ),
               SizedBox(height: 16),
               Text(
                 'Размер: $size',
-                style: GoogleFonts.openSans(fontSize: 16, color: Colors.black87),
+                style:
+                    GoogleFonts.openSans(fontSize: 16, color: Colors.black87),
               ),
             ],
           ),
@@ -151,7 +158,8 @@ class _MyRentalsScreenState extends State<MyRentalsScreen>
             padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: Color(0xFF6C9942).withOpacity(0.1), // Light background for ListTile
+              color:
+                  Color(0xFF6C9942).withOpacity(0.1), // Легкий фон для карточки
             ),
             child: ListTile(
               title: Text(
