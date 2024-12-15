@@ -65,9 +65,6 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                   Tab(text: 'L'),
                   Tab(text: 'XL'),
                 ],
-                onTap: (index) {
-                  // Мы не сбрасываем выбранный бокс при смене вкладки
-                },
               ),
             ),
           ),
@@ -93,7 +90,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: 16.0,
-                  vertical: 32.0), // Увеличен отступ сверху и снизу
+                  vertical: 40.0), // Увеличен отступ сверху и снизу
               child: Container(
                 height: 300,
                 decoration: BoxDecoration(
@@ -148,7 +145,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6C9942),
-                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    padding: const EdgeInsets.symmetric(vertical: 24.0),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
