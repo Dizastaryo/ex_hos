@@ -43,19 +43,15 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             preferredSize:
                 const Size.fromHeight(60.0), // Увеличиваем высоту для вкладок
             child: SingleChildScrollView(
-              // Добавляем возможность прокручивать вкладки
               scrollDirection: Axis.horizontal, // Прокрутка по горизонтали
               child: TabBar(
                 controller: _tabController,
-                indicatorColor:
-                    Colors.white, // Белая линия под выбранной вкладкой
-                labelColor:
-                    Colors.white, // Белый цвет текста на активной вкладке
-                unselectedLabelColor:
-                    Colors.black87, // Цвет для неактивных вкладок
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.black87,
                 labelStyle: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 20, // Увеличиваем размер текста на вкладках
+                  fontSize: 20,
                 ),
                 tabs: const [
                   Tab(text: 'XXS'),
@@ -71,7 +67,6 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
         ),
         body: Column(
           children: [
-            // TabBarView с выбором коробок
             Expanded(
               flex: 3,
               child: TabBarView(
@@ -86,11 +81,9 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                 ],
               ),
             ),
-            // Сцена с 3D моделью или сообщением
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 40.0), // Увеличен отступ сверху и снизу
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 40.0),
               child: Container(
                 height: 300,
                 decoration: BoxDecoration(
@@ -120,18 +113,15 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                       ),
               ),
             ),
-            // Кнопка "Арендовать" только если коробка выбрана
             if (selectedBox != null)
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: ElevatedButton(
                   onPressed: () {
-                    // Переход на страницу BoxScreen
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => BoxScreen(
-                            box: selectedBox!), // Передаем выбранную коробку
+                        builder: (context) => BoxScreen(box: selectedBox!),
                       ),
                     );
                   },
@@ -140,7 +130,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white, // Цвет текста кнопки
+                      color: Colors.white,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -171,7 +161,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
         maxScale: 2.0,
         child: GridView.builder(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 6, // Количество колонок
+            crossAxisCount: 6,
             crossAxisSpacing: 8.0,
             mainAxisSpacing: 8.0,
           ),
@@ -182,14 +172,14 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
               onTap: () {
                 if (box.isAvailable) {
                   setState(() {
-                    selectedBox = box;
+                    selectedBox = box; // Обновляем выбранную коробку
                   });
                 }
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                width: 150, // Увеличиваем ширину карточки
-                height: 150, // Увеличиваем высоту карточки
+                width: 150,
+                height: 150,
                 decoration: BoxDecoration(
                   color: box.isAvailable ? const Color(0xFF6C9942) : Colors.red,
                   borderRadius: BorderRadius.circular(12),
