@@ -98,6 +98,8 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                 ),
                 child: selectedBox != null
                     ? ModelViewer(
+                        key: ValueKey(selectedBox
+                            ?.id), // Принудительное обновление виджета
                         src:
                             "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
                         autoRotate: true,
