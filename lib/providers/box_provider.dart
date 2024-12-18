@@ -1,5 +1,5 @@
-import '../models/box_model.dart';
 import 'package:flutter/foundation.dart';
+import '../models/box_model.dart';
 
 class BoxProvider with ChangeNotifier {
   final List<BoxModel> boxes = [];
@@ -8,6 +8,7 @@ class BoxProvider with ChangeNotifier {
     _initializeBoxes();
   }
 
+  // Инициализация коробок
   void _initializeBoxes() {
     _addBoxes('XXS', 240, 240, BoxType.xxs, 10);
     _addBoxes('XS', 100, 100, BoxType.xs, 10);
@@ -17,6 +18,7 @@ class BoxProvider with ChangeNotifier {
     _addBoxes('XL', 300, 300, BoxType.xl, 1);
   }
 
+  // Добавление коробок в список
   void _addBoxes(
       String prefix, int width, int height, BoxType type, int count) {
     for (int i = 1; i <= count; i++) {
@@ -30,9 +32,16 @@ class BoxProvider with ChangeNotifier {
     }
   }
 
+  // Изменение доступности коробки
   void toggleAvailability(String id) {
     final box = boxes.firstWhere((b) => b.id == id);
     box.isAvailable = !box.isAvailable;
+    notifyListeners();
+  }
+
+  // Метод для аренды коробки
+  void rentBox(BoxModel box) {
+    toggleAvailability(box.id);
     notifyListeners();
   }
 }
