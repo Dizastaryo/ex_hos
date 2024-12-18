@@ -93,8 +93,8 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             GestureDetector(
               onTap: () => _show3DModelDialog(context, selectedBox!),
               child: Container(
-                margin: const EdgeInsets.all(16),
-                height: 180,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                height: 300,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   gradient: const LinearGradient(
@@ -115,7 +115,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
                   src:
                       "assets/3d_models/${selectedBox!.type.name.toUpperCase()}.glb",
                   autoRotate: true,
-                  cameraControls: false,
+                  cameraControls: true, // Enable manual rotation
                   backgroundColor: const Color(0xFFE8F5E9),
                   alt: "3D модель ${selectedBox!.type.name.toUpperCase()}",
                 ),
@@ -123,7 +123,8 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             ),
           // Кнопка "Арендовать"
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: ElevatedButton(
               onPressed: selectedBox != null
                   ? () {
@@ -232,7 +233,7 @@ class _BoxSelectionScreenState extends State<BoxSelectionScreen>
             child: ModelViewer(
               src: "assets/3d_models/${box.type.name.toUpperCase()}.glb",
               autoRotate: true,
-              cameraControls: true,
+              cameraControls: true, // Enable manual rotation
             ),
           ),
         );
