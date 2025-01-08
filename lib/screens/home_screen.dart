@@ -7,14 +7,12 @@ import 'support_screen.dart'; // Экран "Поддержка"
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   var _currentPage = 0;
-
   final List<Widget> _pages = [
     AboutScreen(),
     MyRentalsScreen(),
@@ -53,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 10),
             const Text(
-              'Amanzat',
+              'SAFARSAQTAU',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.black,

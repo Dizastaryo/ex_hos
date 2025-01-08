@@ -51,4 +51,4 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/logo_icon.jpg"
+  image_path: "assets/amanzat_logo.png"
