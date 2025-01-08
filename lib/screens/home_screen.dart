@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 10),
             const Text(
-              'SAFARSAQTAU',
+              'SANDYQ',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.black,

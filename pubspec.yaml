@@ -45,7 +45,6 @@ flutter:
     - assets/amanzat_logo.png
     - assets/animation/
     - assets/intro.mp4
-    - assets/logo_icon.jpg
     
 
 flutter_launcher_icons:
