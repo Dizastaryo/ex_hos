@@ -15,68 +15,71 @@ import 'screens/auth_screen.dart';
 import 'screens/my_cart_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/reset_password_screen.dart';
+import 'screens/admin_home_screen.dart';
+import 'screens/moderator_home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Инициализация уведомлений
   await initNotifications();
-
-  // Запрос разрешений
   await requestNotificationPermissions();
-
-  // Инициализация workmanager
   await Workmanager().initialize(callbackDispatcher);
 
-  // Регистрация периодической задачи
   Workmanager().registerPeriodicTask(
     'notify_rentals_task',
     'notify_rentals',
-    frequency: Duration(days: 1), // Повторяем каждый день
-    initialDelay:
-        Duration(seconds: 10), // Начнем с задержкой 10 секунд для теста
+    frequency: const Duration(days: 1),
+    initialDelay: const Duration(seconds: 10),
   );
 
   final dio = Dio();
   final cookieJar = CookieJar();
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Перехватчик для добавления токена в заголовки
-  dio.interceptors.add(InterceptorsWrapper(
-    onRequest: (options, handler) async {
-      // Получаем cookies для текущего запроса
-      var cookies = await cookieJar.loadForRequest(options.uri);
+  // ✅ Создаём ОДИН экземпляр AuthProvider
+  final authProvider = AuthProvider(dio);
 
-      // Ищем токен в cookies
-      String? token;
-      for (var cookie in cookies) {
-        if (cookie.name == 'название_токена') {
-          token = cookie.value;
-          break; // Как только токен найден, выходим из цикла
+  // ✅ Добавляем интерцептор, использующий authProvider
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final token = authProvider.token;
+        if (token != null && token.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $token';
         }
-      }
+        return handler.next(options);
+      },
+      onError: (error, handler) async {
+        if (error.response?.statusCode == 401 &&
+            !error.requestOptions.extra.containsKey('retry')) {
+          try {
+            await authProvider.refreshToken();
+            final newToken = authProvider.token;
+            if (newToken != null) {
+              final retryRequest = error.requestOptions;
+              retryRequest.headers['Authorization'] = 'Bearer $newToken';
+              retryRequest.extra['retry'] = true;
+              final retryResponse = await dio.fetch(retryRequest);
+              return handler.resolve(retryResponse);
+            }
+          } catch (e) {
+            await authProvider.logout();
+          }
+        }
+        return handler.next(error);
+      },
+    ),
+  );
 
-      if (token != null && token.isNotEmpty) {
-        // Если токен найден, добавляем его в заголовки
-        options.headers['Authorization'] = 'Bearer $token';
-      }
-
-      return handler.next(options); // продолжить выполнение запроса
-    },
-    onError: (DioException error, handler) {
-      // Обработка ошибок, используя DioException
-      return handler.next(error); // продолжить выполнение обработки ошибки
-    },
-  ));
-
+  // ✅ Передаём authProvider в MultiProvider
   runApp(
     MultiProvider(
       providers: [
         Provider<Dio>.value(value: dio),
         Provider<CookieJar>.value(value: cookieJar),
-        ChangeNotifierProvider(create: (_) => AuthProvider(dio))
+        ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
       ],
-      child: MyApp(), // Теперь AuthProvider передается через MultiProvider
+      child: MyApp(),
     ),
   );
 }
@@ -223,6 +226,11 @@ class MyApp extends StatelessWidget {
             return ScalePageRoute(page: MyCartScreen());
           case '/my-resetpas':
             return ScalePageRoute(page: ResetPasswordScreen());
+          case '/admin-home':
+            return ScalePageRoute(
+                page: const AdminHomeScreen()); // Экран для администратора
+          case '/moderator-home':
+            return ScalePageRoute(page: const ModeratorHomeScreen());
           default:
             return null;
         }

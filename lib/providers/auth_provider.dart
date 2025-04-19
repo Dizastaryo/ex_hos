@@ -58,8 +58,17 @@ class AuthProvider with ChangeNotifier {
         await _saveCredentials(login, password, _token!);
         notifyListeners();
 
-        if (context != null) {
-          Navigator.pushReplacementNamed(context, '/main');
+        // Получаем роли из ответа сервера
+        List<String> roles = List<String>.from(data['roles']);
+
+        // Проверяем роль и перенаправляем на нужный экран
+        if (roles.contains('ROLE_ADMIN')) {
+          Navigator.pushReplacementNamed(context!, '/admin-home');
+        } else if (roles.contains('ROLE_MODERATOR')) {
+          Navigator.pushReplacementNamed(context!, '/moderator-home');
+        } else {
+          Navigator.pushReplacementNamed(
+              context!, '/main'); // Стандартный экран для пользователя
         }
       }
     } catch (e) {

@@ -20,6 +20,7 @@ dependencies:
   url_launcher: ^6.0.9
   flutter_animate: ^4.5.2
   provider: ^6.0.5
+  image_picker: ^0.8.5+3
   carousel_slider: ^5.0.0
   workmanager: ^0.5.2
   google_fonts: ^6.0.0
