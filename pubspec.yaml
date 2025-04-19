@@ -40,7 +40,6 @@ flutter:
 
   # Укажите папку с изображениями
   assets:
-    - assets/3d_models/
     - assets/box_img/
     - assets/amanzat_logo.png
     - assets/animation/

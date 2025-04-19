@@ -99,25 +99,26 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   // Кнопка выхода
                   ElevatedButton.icon(
-  onPressed: () async {
-    await authProvider.signOut();
-    // Перенаправляем пользователя на страницу регистрации
-    Navigator.pushReplacementNamed(context, '/auth');
-  },
-  icon: const Icon(Icons.logout, color: Colors.white),
-  label: const Text(
-    'Выйти из аккаунта',
-    style: TextStyle(color: Colors.white), // Указываем цвет текста
-  ),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: const Color(0xFF6C9942),
-    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-    ),
-  ),
-),
-
+                    onPressed: () async {
+                      await authProvider.logout();
+                      // Перенаправляем пользователя на страницу регистрации
+                      Navigator.pushReplacementNamed(context, '/auth');
+                    },
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    label: const Text(
+                      'Выйти из аккаунта',
+                      style: TextStyle(
+                          color: Colors.white), // Указываем цвет текста
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6C9942),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 30, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

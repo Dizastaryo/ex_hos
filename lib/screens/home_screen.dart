@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'about_screen.dart'; // Экран "О компании"
 import 'profile_screen.dart'; // Экран профиля
-import 'my_rentals_screen.dart'; // Экран "Мои аренды"
+import 'my_cart_screen.dart'; // Экран "Мои аренды"
 import 'notifications_screen.dart'; // Экран уведомлений
-import 'support_screen.dart'; // Экран "Поддержка"
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,8 +14,7 @@ class _HomeScreenState extends State<HomeScreen> {
   var _currentPage = 0;
   final List<Widget> _pages = [
     AboutScreen(),
-    MyRentalsScreen(),
-    SupportScreen(),
+    MyCartScreen(),
     ProfileScreen(),
   ];
 
@@ -88,12 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.assignment_outlined), // Современная иконка
             activeIcon: Icon(Icons.assignment), // Активная версия
-            label: 'Мои аренды',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.support_agent_outlined), // Современная иконка
-            activeIcon: Icon(Icons.support_agent), // Активная версия
-            label: 'Поддержка',
+            label: 'Корзина',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_circle_outlined), // Современная иконка

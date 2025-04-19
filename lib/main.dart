@@ -9,15 +9,12 @@ import 'package:workmanager/workmanager.dart';
 
 // Провайдеры
 import 'providers/auth_provider.dart';
-import 'providers/box_provider.dart';
-
-// Экраны
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
-import 'screens/box_selection_screen.dart';
+import 'screens/my_cart_screen.dart';
 import 'screens/notifications_screen.dart';
-import 'screens/my_rentals_screen.dart';
+import 'screens/reset_password_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,9 +74,7 @@ void main() async {
       providers: [
         Provider<Dio>.value(value: dio),
         Provider<CookieJar>.value(value: cookieJar),
-        ChangeNotifierProvider(
-            create: (_) => AuthProvider(dio)), // Передаем AuthProvider здесь
-        ChangeNotifierProvider(create: (_) => BoxProvider()),
+        ChangeNotifierProvider(create: (_) => AuthProvider(dio))
       ],
       child: MyApp(), // Теперь AuthProvider передается через MultiProvider
     ),
@@ -223,11 +218,11 @@ class MyApp extends StatelessWidget {
           case '/main':
             return ScalePageRoute(page: const HomeScreen());
           case '/box-selection':
-            return ScalePageRoute(page: const BoxSelectionScreen());
-          case '/notifications':
             return ScalePageRoute(page: const NotificationsScreen());
-          case '/my-rentals':
-            return ScalePageRoute(page: MyRentalsScreen());
+          case '/my-cart':
+            return ScalePageRoute(page: MyCartScreen());
+          case '/my-resetpas':
+            return ScalePageRoute(page: ResetPasswordScreen());
           default:
             return null;
         }

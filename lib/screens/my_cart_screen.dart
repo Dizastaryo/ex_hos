@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class MyRentalsScreen extends StatefulWidget {
+class MyCartScreen extends StatefulWidget {
   @override
-  _MyRentalsScreenState createState() => _MyRentalsScreenState();
+  _MyCartScreenState createState() => _MyCartScreenState();
 }
 
-class _MyRentalsScreenState extends State<MyRentalsScreen>
+class _MyCartScreenState extends State<MyCartScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 

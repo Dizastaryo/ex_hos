@@ -5,82 +5,116 @@ class AuthService {
 
   AuthService(this.dio);
 
-  // Функция отправки OTP для регистрации
-  Future<void> sendOtp(String email) async {
-    try {
-      final response = await dio.post(
-        'http://172.20.10.6:8080/user-api/v1/auth/sendCode',
-        data: {'email': email},
-      );
-
-      if (response.statusCode == 200) {
-        print('OTP sent to $email');
-      } else {
-        throw Exception('Error sending OTP: ${response.data}');
-      }
-    } catch (e) {
-      throw Exception('Error sending OTP: $e');
-    }
+  // Отправка OTP на email
+  Future<void> sendEmailOtp(String email) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/send-otp',
+      data: {'email': email},
+    );
   }
 
-  // Функция для проверки OTP
-  Future<void> verifyOtp(String email, String otp) async {
-    try {
-      final response = await dio.post(
-        'http://172.20.10.6:8080/user-api/v1/auth/validateCode',
-        data: {'email': email, 'code': otp},
-      );
-
-      if (response.statusCode == 200) {
-        print('OTP verified');
-      } else {
-        throw Exception('Error verifying OTP: ${response.data}');
-      }
-    } catch (e) {
-      throw Exception('Error verifying OTP: $e');
-    }
+  // Проверка OTP для email
+  Future<void> verifyEmailOtp(String email, String otp) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/verify-otp',
+      data: {'email': email, 'otp': otp},
+    );
   }
 
-  // Функция для регистрации с новым паролем и номером телефона
-  Future<void> completeRegistration(
-      String email, String password, String phoneNumber) async {
-    try {
-      final response = await dio.post(
-        'http://172.20.10.6:8080/user-api/v1/auth/registration',
-        data: {
-          'email': email,
-          'password': password,
-          'phoneNumber': phoneNumber,
-          'role': 'USER', // Статичный роль
-          'status': 'OPEN' // Статичный статус
-        },
-      );
-
-      if (response.statusCode == 200) {
-        print('User registered successfully');
-      } else {
-        throw Exception('Registration error: ${response.data}');
-      }
-    } catch (e) {
-      throw Exception('Error completing registration: $e');
-    }
+  // Отправка OTP на телефон
+  Future<void> sendSmsOtp(String phone) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/send-sms-otp',
+      data: {'phoneNumber': phone},
+    );
   }
 
-  // Функция логина с email и паролем
-  Future<void> login(String email, String password) async {
-    try {
-      final response = await dio.post(
-        'http://172.20.10.6:8080/user-api/v1/auth/login',
-        data: {'email': email, 'password': password},
-      );
+  // Проверка OTP по телефону
+  Future<void> verifySmsOtp(String phone, String otp) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/verify-sms-otp',
+      data: {'phoneNumber': phone, 'otp': otp},
+    );
+  }
 
-      if (response.statusCode == 200) {
-        print('Login successful');
-      } else {
-        throw Exception('Login error: ${response.data}');
-      }
-    } catch (e) {
-      throw Exception('Login error: $e');
-    }
+  // Регистрация через email
+  Future<void> registerWithEmail(
+      String username, String email, String password, String otp) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/signup',
+      data: {
+        'username': username,
+        'email': email,
+        'password': password,
+        'otp': otp,
+        'role': ['user'],
+      },
+    );
+  }
+
+  // Регистрация по телефону
+  Future<void> registerWithPhone(
+      String username, String phone, String password, String otp) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/signup-phone',
+      data: {
+        'username': username,
+        'phoneNumber': phone,
+        'password': password,
+        'otp': otp,
+        'role': ['user'],
+      },
+    );
+  }
+
+  // Вход
+  Future<Response> login(String login, String password) async {
+    return await dio.post(
+      'http://172.20.10.2:8081/api/auth/signin',
+      data: {'login': login, 'password': password},
+    );
+  }
+
+  // Обновление access токена
+  Future<Response> refreshToken() async {
+    return await dio.post(
+      'http://172.20.10.2:8081/api/auth/refresh',
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        extra: {'withCredentials': true}, // важно для отправки куки
+      ),
+    );
+  }
+
+  // Выход
+  Future<void> logout() async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/logout',
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        extra: {'withCredentials': true},
+      ),
+    );
+  }
+
+  // Запрос на сброс пароля
+  Future<void> requestPasswordReset(String login) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/reset-password/request',
+      data: {'login': login},
+    );
+  }
+
+  // Подтверждение сброса пароля
+  Future<void> confirmPasswordReset(
+      String login, String otp, String newPassword) async {
+    await dio.post(
+      'http://172.20.10.2:8081/api/auth/reset-password/confirm',
+      data: {
+        'login': login,
+        'otp': otp,
+        'newPassword': newPassword,
+      },
+    );
   }
 }
