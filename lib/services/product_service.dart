@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/product.dart';
 
 class ProductService {
-  static const _baseUrl = 'http://your-api-url.com/api';
+  static const _baseUrl = 'http://172.20.10.2:8000';
   final Dio _dio = Dio();
 
   Future<Product> addProduct({
@@ -18,7 +18,7 @@ class ProductService {
       });
 
       final response = await _dio.post(
-        '$_baseUrl/products',
+        '$_baseUrl/products/',
         data: formData,
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
@@ -41,7 +41,7 @@ class ProductService {
   }) async {
     try {
       final response = await _dio.get(
-        '$_baseUrl/products',
+        '$_baseUrl/products/',
         queryParameters: {
           'category': category,
           'search': search,
