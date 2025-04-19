@@ -4,12 +4,13 @@ import '../models/product.dart';
 
 class ProductService {
   static const _baseUrl = 'http://172.20.10.2:8000';
-  final Dio _dio = Dio();
+  final Dio _dio;
+
+  ProductService(this._dio);
 
   Future<Product> addProduct({
     required ProductCreate product,
     required List<File> images,
-    String? token,
   }) async {
     try {
       final formData = FormData.fromMap({
@@ -21,7 +22,6 @@ class ProductService {
         '$_baseUrl/products/',
         data: formData,
         options: Options(
-          headers: {'Authorization': 'Bearer $token'},
           contentType: 'multipart/form-data',
         ),
       );
@@ -37,7 +37,6 @@ class ProductService {
   Future<List<Product>> getProducts({
     String? category,
     String? search,
-    String? token,
   }) async {
     try {
       final response = await _dio.get(
@@ -46,9 +45,6 @@ class ProductService {
           'category': category,
           'search': search,
         },
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
       );
 
       return (response.data as List)
@@ -63,7 +59,6 @@ class ProductService {
     required int id,
     required ProductCreate product,
     required List<File> images,
-    String? token,
   }) async {
     try {
       final formData = FormData.fromMap({
@@ -75,7 +70,6 @@ class ProductService {
         '$_baseUrl/products/$id',
         data: formData,
         options: Options(
-          headers: {'Authorization': 'Bearer $token'},
           contentType: 'multipart/form-data',
         ),
       );
@@ -86,14 +80,9 @@ class ProductService {
     }
   }
 
-  Future<void> deleteProduct(int id, {String? token}) async {
+  Future<void> deleteProduct(int id) async {
     try {
-      await _dio.delete(
-        '$_baseUrl/products/$id',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
-        ),
-      );
+      await _dio.delete('$_baseUrl/products/$id');
     } on DioException catch (e) {
       throw _handleDioError(e);
     }

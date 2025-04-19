@@ -16,7 +16,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
 
     try {
       final response = await dio.get(
-        'http://127.0.0.1:8000/products/', // замени на актуальный эндпоинт
+        'http://172.20.10.2:8000/products/', // замени на актуальный эндпоинт
         options: Options(
           headers: {
             // Пример ручной передачи токена, если нужен

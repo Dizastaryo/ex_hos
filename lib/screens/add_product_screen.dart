@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:provider/provider.dart';
+
 import '../services/product_service.dart';
 import '../services/category_service.dart';
 import '../models/product.dart';
@@ -26,12 +28,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCategories();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCategories();
+    });
   }
 
-  void _loadCategories() async {
+  Future<void> _loadCategories() async {
     try {
-      final categories = await CategoryService().getCategories();
+      final categoryService =
+          Provider.of<CategoryService>(context, listen: false);
+      final categories = await categoryService.getCategories();
       setState(() => _categories = categories);
     } catch (e) {
       _showError('Ошибка загрузки категорий: $e');
@@ -56,19 +62,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
-  void _submitForm() async {
+  Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate() || _selectedCategoryId == null)
       return;
 
     try {
       final product = ProductCreate(
-        name: _nameController.text,
-        description: _descriptionController.text,
-        price: double.parse(_priceController.text),
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        price: double.parse(_priceController.text.trim()),
         categoryId: _selectedCategoryId!,
       );
 
-      await ProductService().addProduct(
+      final productService =
+          Provider.of<ProductService>(context, listen: false);
+
+      await productService.addProduct(
         product: product,
         images: _imageFiles,
       );

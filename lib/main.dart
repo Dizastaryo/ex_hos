@@ -9,6 +9,8 @@ import 'package:workmanager/workmanager.dart';
 
 // Провайдеры
 import 'providers/auth_provider.dart';
+import 'services/product_service.dart';
+
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
@@ -78,6 +80,9 @@ void main() async {
         Provider<Dio>.value(value: dio),
         Provider<CookieJar>.value(value: cookieJar),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
+        Provider<ProductService>(
+          create: (_) => ProductService(dio),
+        ),
       ],
       child: MyApp(),
     ),

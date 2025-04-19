@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
 import '../services/product_service.dart';
 import '../models/product.dart';
 
@@ -15,7 +17,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override
   void initState() {
     super.initState();
-    _futureProducts = ProductService().getProducts();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final productService =
+          Provider.of<ProductService>(context, listen: false);
+      setState(() {
+        _futureProducts = productService.getProducts();
+      });
+    });
   }
 
   @override
@@ -28,7 +36,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
-            return Center(child: Text('Ошибка: \${snapshot.error}'));
+            return Center(child: Text('Ошибка: ${snapshot.error}'));
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return const Center(child: Text('Нет продуктов.'));
           }
@@ -91,7 +99,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '₸\${product.price.toStringAsFixed(2)}',
+                                '₸${product.price.toStringAsFixed(2)}',
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ],
