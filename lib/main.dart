@@ -55,6 +55,16 @@ void main() async {
         if (token?.isNotEmpty == true) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+
+        // Автоматически добавляем куки из CookieJar (например, refresh токен)
+        final uri = options.uri;
+        final cookies = await cookieJar.loadForRequest(uri);
+        final cookieHeader =
+            cookies.map((c) => '${c.name}=${c.value}').join('; ');
+        if (cookieHeader.isNotEmpty) {
+          options.headers['Cookie'] = cookieHeader;
+        }
+
         return handler.next(options);
       },
       onError: (error, handler) async {
@@ -66,6 +76,16 @@ void main() async {
             if (newToken != null) {
               final req = error.requestOptions;
               req.headers['Authorization'] = 'Bearer $newToken';
+
+              // Заново добавляем куки
+              final uri = req.uri;
+              final cookies = await cookieJar.loadForRequest(uri);
+              final cookieHeader =
+                  cookies.map((c) => '${c.name}=${c.value}').join('; ');
+              if (cookieHeader.isNotEmpty) {
+                req.headers['Cookie'] = cookieHeader;
+              }
+
               req.extra['retry'] = true;
               final response = await dio.fetch(req);
               return handler.resolve(response);
