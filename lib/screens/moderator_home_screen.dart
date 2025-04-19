@@ -3,64 +3,62 @@ import 'add_product_screen.dart';
 import 'orders_screen.dart';
 import 'products_screen.dart';
 
-class ModeratorHomeScreen extends StatelessWidget {
+class ModeratorHomeScreen extends StatefulWidget {
   const ModeratorHomeScreen({Key? key}) : super(key: key);
+
+  @override
+  _ModeratorHomeScreenState createState() => _ModeratorHomeScreenState();
+}
+
+class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
+  int _currentPage = 0;
+
+  final List<Widget> _pages = const [
+    ProductsScreen(),
+    OrdersScreen(),
+    AddProductScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Экран модератора'),
+        title: const Text('Панель модератора'),
+        centerTitle: true,
+        backgroundColor: Colors.green,
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Text(
-              'Добро пожаловать, модератор!',
-              style: TextStyle(fontSize: 24),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Здесь вы можете управлять товарами, заказами и отзывами.',
-              style: TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _pages[_currentPage],
       ),
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentPage,
+        selectedItemColor: Colors.green,
+        unselectedItemColor: Colors.grey,
+        showUnselectedLabels: true,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) {
+          setState(() {
+            _currentPage = index;
+          });
+        },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.shop),
+            icon: Icon(Icons.shop_outlined),
+            activeIcon: Icon(Icons.shop),
             label: 'Продукты',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.list),
+            icon: Icon(Icons.list_alt_outlined),
+            activeIcon: Icon(Icons.list_alt),
             label: 'Заказы',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.add),
-            label: 'Добавить товар',
+            icon: Icon(Icons.add_box_outlined),
+            activeIcon: Icon(Icons.add_box),
+            label: 'Добавить',
           ),
         ],
-        onTap: (int index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ProductsScreen()),
-            );
-          } else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const OrdersScreen()),
-            );
-          } else if (index == 2) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddProductScreen()),
-            );
-          }
-        },
       ),
     );
   }
