@@ -121,14 +121,17 @@ class _AuthScreenState extends State<AuthScreen>
           children: [
             _buildToggle(),
             const SizedBox(height: 16),
-            _buildTextField(
-              hint: 'Username',
-              icon: Icons.person,
-              controller: _regUsernameController,
-              validator: (v) =>
-                  v != null && v.isEmpty ? 'Введите имя пользователя' : null,
-            ),
-            const SizedBox(height: 16),
+            if (!_isRegCodeSent) ...[
+              // Показывать поле username только до отправки OTP
+              _buildTextField(
+                hint: 'Username',
+                icon: Icons.person,
+                controller: _regUsernameController,
+                validator: (v) =>
+                    v != null && v.isEmpty ? 'Введите имя пользователя' : null,
+              ),
+              const SizedBox(height: 16),
+            ],
             if (!_isRegCodeSent && _regMode == RegistrationMode.email)
               _buildTextField(
                 hint: 'Email',
@@ -143,7 +146,7 @@ class _AuthScreenState extends State<AuthScreen>
               ),
             if (!_isRegCodeSent && _regMode == RegistrationMode.phone)
               _buildTextField(
-                hint: 'Phone (+1234567890)',
+                hint: 'Phone (+77000000000)',
                 icon: Icons.phone,
                 controller: _regPhoneController,
                 validator: (v) =>
@@ -312,7 +315,7 @@ class _AuthScreenState extends State<AuthScreen>
             const SizedBox(height: 12),
             TextButton(
               onPressed: () {
-                Navigator.pushNamed(context, '/reset-password');
+                Navigator.pushNamed(context, '/my-resetpas');
               },
               child: Text(
                 'Забыли пароль?',
