@@ -6,7 +6,7 @@ import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
-
+import 'package:path_provider/path_provider.dart';
 // Providers
 import 'providers/auth_provider.dart';
 
@@ -39,65 +39,42 @@ void main() async {
     frequency: const Duration(days: 1),
   );
 
-  // Создаём Dio без базового URL
+  // Настройка Dio и CookieJar
   final dio = Dio();
-  final cookieJar = CookieJar();
+  final directory = await getApplicationDocumentsDirectory(); // Теперь работает
+  final cookieJar = PersistCookieJar(
+    storage: FileStorage("${directory.path}/.cookies/"),
+  );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // AuthProvider с единственным Dio
-  final authProvider = AuthProvider(dio);
+  // Исправленный вызов конструктора AuthProvider
+  final authProvider =
+      AuthProvider(dio, cookieJar); // Теперь принимает 2 аргумента
 
-  // Интерцептор для вставки Bearer-токена и обновления
-  dio.interceptors.add(
-    InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final token = authProvider.token;
-        if (token?.isNotEmpty == true) {
-          options.headers['Authorization'] = 'Bearer $token';
+  // Настройка интерцепторов
+  dio.interceptors.add(InterceptorsWrapper(
+    onRequest: (options, handler) async {
+      // Добавляем access token
+      if (authProvider.token != null) {
+        options.headers['Authorization'] = 'Bearer ${authProvider.token}';
+      }
+      return handler.next(options);
+    },
+    onError: (error, handler) async {
+      if (error.response?.statusCode == 401 &&
+          !error.requestOptions.extra.containsKey('retry')) {
+        try {
+          await authProvider.refreshToken();
+          error.requestOptions.extra['retry'] = true;
+          return handler.resolve(await dio.fetch(error.requestOptions));
+        } catch (e) {
+          await authProvider.logout();
+          return handler.next(error);
         }
-
-        // Автоматически добавляем куки из CookieJar (например, refresh токен)
-        final uri = options.uri;
-        final cookies = await cookieJar.loadForRequest(uri);
-        final cookieHeader =
-            cookies.map((c) => '${c.name}=${c.value}').join('; ');
-        if (cookieHeader.isNotEmpty) {
-          options.headers['Cookie'] = cookieHeader;
-        }
-
-        return handler.next(options);
-      },
-      onError: (error, handler) async {
-        if (error.response?.statusCode == 401 &&
-            !error.requestOptions.extra.containsKey('retry')) {
-          try {
-            await authProvider.refreshToken();
-            final newToken = authProvider.token;
-            if (newToken != null) {
-              final req = error.requestOptions;
-              req.headers['Authorization'] = 'Bearer $newToken';
-
-              // Заново добавляем куки
-              final uri = req.uri;
-              final cookies = await cookieJar.loadForRequest(uri);
-              final cookieHeader =
-                  cookies.map((c) => '${c.name}=${c.value}').join('; ');
-              if (cookieHeader.isNotEmpty) {
-                req.headers['Cookie'] = cookieHeader;
-              }
-
-              req.extra['retry'] = true;
-              final response = await dio.fetch(req);
-              return handler.resolve(response);
-            }
-          } catch (_) {
-            await authProvider.logout();
-          }
-        }
-        return handler.next(error);
-      },
-    ),
-  );
+      }
+      return handler.next(error);
+    },
+  ));
 
   runApp(
     MultiProvider(
@@ -106,7 +83,6 @@ void main() async {
         Provider<CookieJar>.value(value: cookieJar),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         Provider<ProductService>(create: (_) => ProductService(dio)),
-        // Убираем dio из вызова:
         Provider<CategoryService>(create: (_) => CategoryService(dio)),
       ],
       child: const MyApp(),

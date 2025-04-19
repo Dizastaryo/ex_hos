@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
+import 'package:cookie_jar/cookie_jar.dart';
 import '../services/auth_service.dart';
 
 class AuthProvider with ChangeNotifier {
+  final Dio _dio;
+  final CookieJar _cookieJar;
   final AuthService _authService;
   bool _isLoading = false;
   dynamic currentUser;
   String? _token;
 
-  AuthProvider(Dio dio) : _authService = AuthService(dio);
+  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio);
 
   bool get isLoading => _isLoading;
   String? get token => _token;
@@ -19,22 +22,19 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _saveCredentials(
-      String login, String password, String token) async {
+  Future<void> _saveCredentials(String login, String password) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('login', login);
     await prefs.setString('password', password);
-    await prefs.setString('token', token);
   }
 
   Future<Map<String, String>?> _loadCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final login = prefs.getString('login');
     final password = prefs.getString('password');
-    final token = prefs.getString('token');
 
-    if (login != null && password != null && token != null) {
-      return {'login': login, 'password': password, 'token': token};
+    if (login != null && password != null) {
+      return {'login': login, 'password': password};
     }
     return null;
   }
@@ -42,9 +42,9 @@ class AuthProvider with ChangeNotifier {
   Future<void> _clearCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+    await _cookieJar.deleteAll();
   }
 
-  // Вход
   Future<void> login(String login, String password,
       [BuildContext? context]) async {
     try {
@@ -52,23 +52,14 @@ class AuthProvider with ChangeNotifier {
       final response = await _authService.login(login, password);
 
       if (response.statusCode == 200) {
-        final data = response.data;
-        _token = data['accessToken'];
-        currentUser = data;
-        await _saveCredentials(login, password, _token!);
+        _token = response.data['accessToken'];
+        currentUser = response.data;
+        await _saveCredentials(login, password);
         notifyListeners();
 
-        // Получаем роли из ответа сервера
-        List<String> roles = List<String>.from(data['roles']);
-
-        // Проверяем роль и перенаправляем на нужный экран
-        if (roles.contains('ROLE_ADMIN')) {
-          Navigator.pushReplacementNamed(context!, '/admin-home');
-        } else if (roles.contains('ROLE_MODERATOR')) {
-          Navigator.pushReplacementNamed(context!, '/moderator-home');
-        } else {
-          Navigator.pushReplacementNamed(
-              context!, '/main'); // Стандартный экран для пользователя
+        final roles = List<String>.from(response.data['roles']);
+        if (context != null) {
+          _navigateBasedOnRole(context, roles);
         }
       }
     } catch (e) {
@@ -78,7 +69,16 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Автоматический вход
+  void _navigateBasedOnRole(BuildContext context, List<String> roles) {
+    final route = roles.contains('ROLE_ADMIN')
+        ? '/admin-home'
+        : roles.contains('ROLE_MODERATOR')
+            ? '/moderator-home'
+            : '/main';
+
+    Navigator.pushReplacementNamed(context, route);
+  }
+
   Future<void> autoLogin(BuildContext context) async {
     final credentials = await _loadCredentials();
     if (credentials != null) {
@@ -90,27 +90,27 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Выход
   Future<void> logout() async {
     try {
       await _authService.logout();
-    } catch (_) {}
-    await _clearCredentials();
-    _token = null;
-    currentUser = null;
-    notifyListeners();
+    } finally {
+      await _clearCredentials();
+      _token = null;
+      currentUser = null;
+      notifyListeners();
+    }
   }
 
-  // Обновление токена
   Future<void> refreshToken() async {
     try {
-      final response = await _authService.refreshToken();
+      final response = await _dio.post('/auth/refresh');
       if (response.statusCode == 200) {
         _token = response.data['accessToken'];
         notifyListeners();
       }
     } catch (e) {
-      throw Exception('Token refresh error: $e');
+      await logout();
+      throw Exception('Token refresh failed: $e');
     }
   }
 
