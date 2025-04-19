@@ -24,7 +24,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     try {
       final response = await dio.get(
-        'http://172.20.10.2:8000/products/', // замени на актуальный эндпоинт для заказов
+        'http://172.20.10.2:8000/categories/', // замени на актуальный эндпоинт для заказов
       );
 
       final buffer = StringBuffer();
