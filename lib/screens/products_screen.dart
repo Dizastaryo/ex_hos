@@ -55,9 +55,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
               itemBuilder: (context, index) {
                 final product = products[index];
                 final imageUrl = product.imageUrls.isNotEmpty
-                    ? product.imageUrls.first
+                    ? 'http://172.20.10.2:8000${product.imageUrls.first}'
                     : 'https://via.placeholder.com/150';
-
                 return GestureDetector(
                   onTap: () {
                     // TODO: открыть детали продукта

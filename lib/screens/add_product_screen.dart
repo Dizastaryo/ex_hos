@@ -60,7 +60,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   Future<void> _submitForm() async {
-    if (!_formKey.currentState!.validate() || _selectedCategoryId == null) return;
+    if (!_formKey.currentState!.validate() || _selectedCategoryId == null)
+      return;
 
     final product = ProductCreate(
       name: _nameController.text.trim(),
@@ -72,14 +73,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
     try {
       final service = context.read<ProductService>();
       await service.addProduct(product: product, images: _imageFiles);
-      Navigator.pop(context, true);
+      Navigator.pushReplacementNamed(context, '/products');
     } catch (e) {
       _showError('Ошибка создания продукта: $e');
     }
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildImagePreview() {
@@ -96,7 +98,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         final file = _imageFiles[index];
         return Stack(
           children: [
-            Image.file(file, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
+            Image.file(file,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity),
             Positioned(
               right: 0,
               child: IconButton(
@@ -123,12 +128,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Название'),
-                validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Обязательное поле' : null,
               ),
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(labelText: 'Описание'),
-                validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Обязательное поле' : null,
               ),
               TextFormField(
                 controller: _priceController,
@@ -142,7 +149,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
               DropdownButtonFormField<int>(
                 value: _selectedCategoryId,
                 decoration: const InputDecoration(labelText: 'Категория'),
-                items: _categories.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                items: _categories
+                    .map((c) =>
+                        DropdownMenuItem(value: c.id, child: Text(c.name)))
+                    .toList(),
                 onChanged: (v) => setState(() => _selectedCategoryId = v),
                 validator: (v) => v == null ? 'Выберите категорию' : null,
               ),
