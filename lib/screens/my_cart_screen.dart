@@ -35,14 +35,14 @@ class _MyCartScreenState extends State<MyCartScreen> {
       setState(() {
         _cartItems = (response['items'] as List).cast<Map<String, dynamic>>();
         _totalPrice = (response['total_price'] as num).toDouble();
-        _isLoading = false;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() {
         _cartItems = [];
         _totalPrice = 0.0;
-        _isLoading = false;
       });
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -56,12 +56,16 @@ class _MyCartScreenState extends State<MyCartScreen> {
     await _loadCart();
   }
 
+  Future<void> _updateQuantity(int productId, int newQuantity) async {
+    if (newQuantity < 1) return;
+    await _productService.updateCart(productId, newQuantity);
+    await _loadCart();
+  }
+
   void _navigateToCheckout(List<Map<String, int>> items) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => OrdersScreen(items: items),
-      ),
+      MaterialPageRoute(builder: (_) => OrdersScreen(items: items)),
     );
   }
 
@@ -73,7 +77,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_forever),
-            onPressed: _clearCart,
+            onPressed: _cartItems.isEmpty ? null : _clearCart,
             tooltip: 'Очистить корзину',
           ),
         ],
@@ -89,8 +93,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
                         itemCount: _cartItems.length,
                         separatorBuilder: (_, __) => const Divider(),
                         itemBuilder: (context, index) {
-                          final item = _cartItems[index];
-                          return _buildCartItem(item);
+                          return _buildCartItem(_cartItems[index]);
                         },
                       ),
                     ),
@@ -105,8 +108,11 @@ class _MyCartScreenState extends State<MyCartScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.shopping_cart_outlined,
-              size: 80, color: Colors.grey),
+          const Icon(
+            Icons.shopping_cart_outlined,
+            size: 80,
+            color: Colors.grey,
+          ),
           const SizedBox(height: 20),
           const Text(
             'Ваша корзина пуста',
@@ -118,7 +124,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
             label: const Text('Перейти к товарам'),
             onPressed: () => Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => const ProductsScreen()),
+              MaterialPageRoute(builder: (_) => const ProductsScreen()),
             ),
           ),
         ],
@@ -127,65 +133,77 @@ class _MyCartScreenState extends State<MyCartScreen> {
   }
 
   Widget _buildCartItem(Map<String, dynamic> item) {
-    // Извлекаем данные продукта
-    final productData = item['product'] as Map<String, dynamic>?;
-    final productId = productData?['id'] as int?;
+    final productDataNullable = item['product'] as Map<String, dynamic>?;
     final quantity = item['quantity'] as int?;
 
-    // Проверяем наличие обязательных данных
-    if (productId == null || quantity == null) {
+    if (productDataNullable == null || quantity == null) {
       return const ListTile(
         title: Text('Некорректные данные товара'),
         leading: Icon(Icons.error_outline, color: Colors.red),
       );
     }
 
-    // Извлекаем имя продукта и цену
-    final productName =
-        productData?['name'] as String? ?? 'Неизвестный продукт';
-    final productPrice = (productData?['price'] as num?)?.toDouble() ?? 0.0;
+    final pd = productDataNullable;
+    final productId = pd['id'] as int?;
+    if (productId == null) {
+      return const ListTile(
+        title: Text('Некорректные данные товара'),
+        leading: Icon(Icons.error_outline, color: Colors.red),
+      );
+    }
 
-    // Извлекаем изображения продукта (если они есть)
-    final imageUrls = (productData?['images'] as List<dynamic>?)
-            ?.cast<Map<String, dynamic>>() ??
-        [];
-    final imageUrl = imageUrls.isNotEmpty
-        ? 'http://172.20.10.2:8000${imageUrls.first['image_url']}'
+    final name = pd['name'] as String? ?? 'Неизвестный продукт';
+    final price = (pd['price'] as num?)?.toDouble() ?? 0.0;
+    final images = (pd['images'] as List).cast<Map<String, dynamic>>();
+    final imageUrl = images.isNotEmpty
+        ? 'http://172.20.10.2:8000${images.first['image_url']}'
         : 'https://via.placeholder.com/150';
 
-    // Строим виджет ListTile с информацией о товаре
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: imageUrls.isNotEmpty
-          ? Image.network(
-              imageUrl,
-              width: 60,
-              height: 60,
-              fit: BoxFit.cover,
-            )
-          : const Icon(Icons.shopping_bag, size: 60),
-      title: Text(productName),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          imageUrl,
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+        ),
+      ),
+      title: Text(name),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${productPrice.toStringAsFixed(2)} ₸ x $quantity'),
+          Text('${price.toStringAsFixed(2)} ₸ x $quantity'),
           Text(
-            'Итого: ${(productPrice * quantity).toStringAsFixed(2)} ₸',
+            'Итого: ${(price * quantity).toStringAsFixed(2)} ₸',
             style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove_circle_outline),
+                onPressed: () => _updateQuantity(productId, quantity - 1),
+              ),
+              Text(quantity.toString()),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                onPressed: () => _updateQuantity(productId, quantity + 1),
+              ),
+            ],
           ),
         ],
       ),
-      trailing: Row(
+      trailing: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Кнопка для перехода к оформлению заказа
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios),
             onPressed: () => _navigateToCheckout([
               {'product_id': productId, 'quantity': quantity}
             ]),
           ),
-          // Кнопка для удаления товара из корзины
           IconButton(
             icon: const Icon(Icons.delete_outline),
             color: Colors.red,
@@ -197,6 +215,14 @@ class _MyCartScreenState extends State<MyCartScreen> {
   }
 
   Widget _buildTotalSection() {
+    final items = _cartItems.map((item) {
+      final prod = item['product'] as Map<String, dynamic>;
+      return {
+        'product_id': prod['id'] as int,
+        'quantity': item['quantity'] as int
+      };
+    }).toList();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -230,14 +256,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.blue,
               ),
-              onPressed: () => _navigateToCheckout(
-                _cartItems
-                    .map((e) => {
-                          'product_id': e['product_id'] as int,
-                          'quantity': e['quantity'] as int
-                        })
-                    .toList(),
-              ),
+              onPressed: () => _navigateToCheckout(items),
               child: const Text(
                 'Оформить весь заказ',
                 style: TextStyle(fontSize: 16, color: Colors.white),

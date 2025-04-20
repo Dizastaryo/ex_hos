@@ -95,6 +95,19 @@ class ProfileScreen extends StatelessWidget {
                       Navigator.pushNamed(context, '/user_agreement');
                     },
                   ),
+                  ListTile(
+                    leading:
+                        Icon(Icons.support_agent, color: Colors.green.shade700),
+                    title: Text(
+                      'Связаться с нами',
+                      style: TextStyle(fontSize: 16, color: Colors.black),
+                    ),
+                    trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () {
+                      Navigator.pushNamed(context, '/support');
+                    },
+                  ),
+                  const Divider(),
                   const Divider(),
                   const SizedBox(height: 20),
                   // Кнопка выхода

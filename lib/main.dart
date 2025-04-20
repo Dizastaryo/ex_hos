@@ -23,6 +23,8 @@ import 'screens/home_screen.dart';
 
 import 'screens/my_orders_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/support_screen.dart';
+
 import 'screens/auth_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/my_cart_screen.dart';
@@ -154,6 +156,7 @@ class MyApp extends StatelessWidget {
         '/reset-password': (_) => const ResetPasswordScreen(),
         '/admin-home': (_) => const AdminHomeScreen(),
         '/moderator-home': (_) => const ModeratorHomeScreen(),
+        '/support': (_) => SupportScreen(),
         '/about': (_) => const AboutScreen(),
         '/product-detail': (context) => ProductDetailScreen(
               productId: ModalRoute.of(context)!.settings.arguments as int,
