@@ -1,3 +1,4 @@
+// lib/screens/orders_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
@@ -28,7 +29,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _submitOrder() async {
     final address = _addressController.text.trim();
-
     if (address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Пожалуйста, введите адрес доставки')),
@@ -39,10 +39,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() => isLoading = true);
     try {
       final response = await orderService.createOrder(widget.items, address);
+      final orderId = response['id'] as int;
+      final orderTotal = (response['total'] as num).toDouble();
+
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PaymentScreen(orderId: response['id']),
+          builder: (_) => PaymentScreen(
+            orderId: orderId,
+            orderTotal: orderTotal,
+          ),
         ),
       );
     } catch (e) {
@@ -85,11 +91,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 subtitle:
                                     Text('Количество: ${item['quantity']}'),
                                 trailing: Text(
-                                    '${(snapshot.data!.price * item['quantity']!).toStringAsFixed(2)} ₸'),
+                                  '${(snapshot.data!.price * item['quantity']!).toStringAsFixed(2)} ₸',
+                                ),
                               );
                             }
                             return const ListTile(
-                                title: CircularProgressIndicator());
+                              title: Center(child: CircularProgressIndicator()),
+                            );
                           },
                         );
                       },

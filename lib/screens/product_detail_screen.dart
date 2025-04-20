@@ -1,3 +1,4 @@
+// lib/screens/product_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
@@ -128,9 +129,9 @@ class ProductDetailScreen extends StatelessWidget {
                     ),
                     onPressed: () async {
                       try {
-                        final productService =
-                            Provider.of<ProductService>(context, listen: false);
-                        await productService.addToCart(product.id);
+                        await Provider.of<ProductService>(context,
+                                listen: false)
+                            .addToCart(product.id);
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Добавлено в корзину')),
@@ -166,11 +167,16 @@ class ProductDetailScreen extends StatelessWidget {
                         'Адрес доставки',
                       );
 
+                      // Берём сумму из ответа:
+                      final total = (response['total'] as num).toDouble();
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              PaymentScreen(orderId: response['id']),
+                          builder: (_) => PaymentScreen(
+                            orderId: response['id'] as int,
+                            orderTotal: total,
+                          ),
                         ),
                       );
                     } catch (e) {

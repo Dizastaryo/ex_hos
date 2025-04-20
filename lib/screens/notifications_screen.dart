@@ -23,11 +23,9 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final List<NotificationItem> notifications = [
     NotificationItem(
-        title: 'Аренда заканчивается',
-        description: 'Бокс #101',
-        payload: '101'),
+        title: 'Ваш заказ отправлен', description: 'Бананы', payload: '101'),
     NotificationItem(
-        title: 'Новая аренда', description: 'Бокс #102', payload: '102'),
+        title: 'Ваш заказ отправлен', description: 'Иогурт', payload: '102'),
   ];
 
   @override

@@ -46,19 +46,46 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         context: context,
         builder: (context) {
           return AlertDialog(
-            title: Text('Детали заказа #$orderId'),
+            title: Text('Заказ #$orderId'),
             content: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Адрес: ${orderDetails['shipping_address']}'),
-                  SizedBox(height: 8),
-                  Text('Статус: ${orderDetails['status']}'),
-                  SizedBox(height: 8),
-                  Text('Товары:'),
+                  Row(
+                    children: const [
+                      Icon(Icons.location_on_outlined, size: 20),
+                      SizedBox(width: 6),
+                      Text('Адрес доставки:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  Text(orderDetails['shipping_address'] ?? 'Нет данных'),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle_outline, size: 20),
+                      SizedBox(width: 6),
+                      Text('Статус заказа:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  Text(orderDetails['status'] ?? 'Неизвестно'),
+                  const SizedBox(height: 12),
+                  const Text('Состав заказа:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
                   ...orderDetails['items'].map<Widget>((item) {
-                    return Text(
-                      'Product ID: ${item['product_id']}, Quantity: ${item['quantity']}',
+                    return Card(
+                      elevation: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(8),
+                        leading: const Icon(Icons.shopping_bag_outlined),
+                        title: Text('Товар ID: ${item['product_id']}'),
+                        subtitle: Text('Количество: ${item['quantity']}'),
+                      ),
                     );
                   }).toList(),
                 ],

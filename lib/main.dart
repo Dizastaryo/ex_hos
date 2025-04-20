@@ -159,9 +159,14 @@ class MyApp extends StatelessWidget {
               productId: ModalRoute.of(context)!.settings.arguments as int,
             ),
         '/orders': (context) => const MyOrdersScreen(),
-        '/payment': (context) => PaymentScreen(
-              orderId: ModalRoute.of(context)!.settings.arguments as int,
-            ),
+        '/payment': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return PaymentScreen(
+            orderId: args['orderId'] as int,
+            orderTotal: args['orderTotal'] as double,
+          );
+        },
         '/payment-status': (context) => PaymentStatusScreen(
               orderId: ModalRoute.of(context)!.settings.arguments as int,
             ),

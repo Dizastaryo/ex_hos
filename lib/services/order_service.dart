@@ -42,21 +42,19 @@ class OrderService {
   }
 
   // Метод для создания платежа
-  Future<Map<String, dynamic>> createPayment(int orderId, String method) async {
+  Future<Map<String, dynamic>> createPayment(int orderId, double amount) async {
     final response = await _dio.post(
-      '$_baseUrl/payments/create', // Отправка запроса на создание платежа
+      '$_baseUrl/payments/create',
       data: {
         'order_id': orderId,
-        'amount': 100.0
-      }, // Тут можно отправить сумму как параметр
+        'amount': amount,
+      },
     );
     return response.data as Map<String, dynamic>;
   }
 
-  // Метод для получения статуса платежа
   Future<Map<String, dynamic>> getPaymentStatus(int orderId) async {
-    final response = await _dio
-        .get('$_baseUrl/payments/status/$orderId'); // Запрос статуса платежа
+    final response = await _dio.get('$_baseUrl/payments/status/$orderId');
     return response.data as Map<String, dynamic>;
   }
 
