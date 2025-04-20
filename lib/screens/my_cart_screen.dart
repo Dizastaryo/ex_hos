@@ -1,7 +1,6 @@
 // lib/screens/my_cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:convert';
 import '../services/product_service.dart';
 import '../services/order_service.dart';
 import 'products_screen.dart';
@@ -33,9 +32,8 @@ class _MyCartScreenState extends State<MyCartScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await _productService.getCart();
-      final items = jsonDecode(response['items']) as List;
       setState(() {
-        _cartItems = items.cast<Map<String, dynamic>>();
+        _cartItems = (response['items'] as List).cast<Map<String, dynamic>>();
         _totalPrice = (response['total_price'] as num).toDouble();
         _isLoading = false;
       });
@@ -129,9 +127,12 @@ class _MyCartScreenState extends State<MyCartScreen> {
   }
 
   Widget _buildCartItem(Map<String, dynamic> item) {
-    final productId = item['product_id'] as int?;
+    // Извлекаем данные продукта
+    final productData = item['product'] as Map<String, dynamic>?;
+    final productId = productData?['id'] as int?;
     final quantity = item['quantity'] as int?;
 
+    // Проверяем наличие обязательных данных
     if (productId == null || quantity == null) {
       return const ListTile(
         title: Text('Некорректные данные товара'),
@@ -139,69 +140,59 @@ class _MyCartScreenState extends State<MyCartScreen> {
       );
     }
 
-    return FutureBuilder(
-      future: _productService.getProductById(productId),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return ListTile(
-            title: const Text('Ошибка загрузки товара'),
-            subtitle: Text('ID: $productId'),
-            leading: const Icon(Icons.error, color: Colors.red),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_forever),
-              onPressed: () => _removeItem(productId),
-            ),
-          );
-        }
+    // Извлекаем имя продукта и цену
+    final productName =
+        productData?['name'] as String? ?? 'Неизвестный продукт';
+    final productPrice = (productData?['price'] as num?)?.toDouble() ?? 0.0;
 
-        if (snapshot.hasData) {
-          final product = snapshot.data!;
-          return ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: product.imageUrls.isNotEmpty
-                ? Image.network(
-                    'http://172.20.10.2:8000${product.imageUrls.first}',
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.cover,
-                  )
-                : const Icon(Icons.shopping_bag, size: 60),
-            title: Text(product.name),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${product.price.toStringAsFixed(2)} ₸ x $quantity'),
-                Text(
-                  'Итого: ${(product.price * quantity).toStringAsFixed(2)} ₸',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward_ios),
-                  onPressed: () => _navigateToCheckout([
-                    {'product_id': productId, 'quantity': quantity}
-                  ]),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  color: Colors.red,
-                  onPressed: () => _removeItem(productId),
-                ),
-              ],
-            ),
-          );
-        }
+    // Извлекаем изображения продукта (если они есть)
+    final imageUrls = (productData?['images'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    final imageUrl = imageUrls.isNotEmpty
+        ? 'http://172.20.10.2:8000${imageUrls.first['image_url']}'
+        : 'https://via.placeholder.com/150';
 
-        return const ListTile(
-          leading: CircularProgressIndicator(),
-          title: Text('Загрузка информации о товаре...'),
-        );
-      },
+    // Строим виджет ListTile с информацией о товаре
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      leading: imageUrls.isNotEmpty
+          ? Image.network(
+              imageUrl,
+              width: 60,
+              height: 60,
+              fit: BoxFit.cover,
+            )
+          : const Icon(Icons.shopping_bag, size: 60),
+      title: Text(productName),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${productPrice.toStringAsFixed(2)} ₸ x $quantity'),
+          Text(
+            'Итого: ${(productPrice * quantity).toStringAsFixed(2)} ₸',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Кнопка для перехода к оформлению заказа
+          IconButton(
+            icon: const Icon(Icons.arrow_forward_ios),
+            onPressed: () => _navigateToCheckout([
+              {'product_id': productId, 'quantity': quantity}
+            ]),
+          ),
+          // Кнопка для удаления товара из корзины
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            color: Colors.red,
+            onPressed: () => _removeItem(productId),
+          ),
+        ],
+      ),
     );
   }
 

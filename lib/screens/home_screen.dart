@@ -91,6 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Корзина',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.assignment_outlined), // Современная иконка
+            activeIcon: Icon(Icons.assignment), // Активная версия
+            label: 'Мой заказы',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.account_circle_outlined), // Современная иконка
             activeIcon: Icon(Icons.account_circle), // Активная версия
             label: 'Профиль',
