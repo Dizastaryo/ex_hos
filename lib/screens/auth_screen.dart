@@ -293,7 +293,7 @@ class _AuthScreenState extends State<AuthScreen>
           ),
           const SizedBox(height: 12),
           TextButton(
-            onPressed: () => Navigator.pushNamed(context, '/my-resetpas'),
+            onPressed: () => Navigator.pushNamed(context, '/reset-password'),
             child: const Text('Забыли пароль?'),
           ),
         ],

@@ -95,6 +95,7 @@ class ProfileScreen extends StatelessWidget {
                       Navigator.pushNamed(context, '/user_agreement');
                     },
                   ),
+                  const Divider(),
                   ListTile(
                     leading:
                         Icon(Icons.support_agent, color: Colors.green.shade700),
@@ -107,7 +108,6 @@ class ProfileScreen extends StatelessWidget {
                       Navigator.pushNamed(context, '/support');
                     },
                   ),
-                  const Divider(),
                   const Divider(),
                   const SizedBox(height: 20),
                   // Кнопка выхода

@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        automaticallyImplyLeading: false, // Убираем стрелку назад на главной
         title: Row(
           children: [
             Container(
@@ -43,9 +44,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Image.asset(
-                  'assets/logo.png',
-                  height: 30,
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/logo.png',
+                    height: 40, // Увеличиваем высоту для лучшего масштаба
+                    width: 40, // Указываем ширину для круглой формы
+                    fit: BoxFit.cover, // Логотип будет заполнять круг
+                  ),
                 ),
               ),
             ),
