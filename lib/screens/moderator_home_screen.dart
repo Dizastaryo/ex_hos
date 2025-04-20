@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'add_product_screen.dart';
+import 'about_screen.dart';
 import 'orders_screen.dart';
 import 'products_screen.dart';
 
@@ -16,7 +16,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
   final List<Widget> _pages = const [
     ProductsScreen(),
     OrdersScreen(),
-    AddProductScreen(),
+    AboutScreen(),
   ];
 
   @override
@@ -56,7 +56,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.add_box_outlined),
             activeIcon: Icon(Icons.add_box),
-            label: 'Добавить',
+            label: 'Управление',
           ),
         ],
       ),

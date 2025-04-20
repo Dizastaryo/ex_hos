@@ -1,178 +1,216 @@
 import 'package:flutter/material.dart';
-import 'package:carousel_slider/carousel_slider.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../services/product_service.dart';
+import '../models/product.dart';
+import 'add_product_screen.dart';
+import 'update_product_screen.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
   @override
-  _AboutScreenState createState() => _AboutScreenState();
+  State<AboutScreen> createState() => _AboutScreenState();
 }
 
 class _AboutScreenState extends State<AboutScreen> {
-  final List<Map<String, String>> boxData = [
-    {
-      'image': 'assets/box_img/XXS.png',
-      'title': 'XXS Бокс',
-      'description':
-          'Идеален для хранения небольших предметов, таких как документы, мелкие аксессуары или игрушки.',
-    },
-    {
-      'image': 'assets/box_img/XS.png',
-      'title': 'XS Бокс',
-      'description':
-          'Подходит для хранения книг, косметики или небольших бытовых предметов.',
-    },
-    {
-      'image': 'assets/box_img/S.png',
-      'title': 'S Бокс',
-      'description':
-          'Просторный бокс для одежды, сезонных вещей или крупных бытовых предметов.',
-    },
-    {
-      'image': 'assets/box_img/M.png',
-      'title': 'M Бокс',
-      'description':
-          'Идеален для хранения более крупных вещей: техника, посуда или текстиль.',
-    },
-    {
-      'image': 'assets/box_img/L.png',
-      'title': 'L Бокс',
-      'description':
-          'Подходит для крупных и тяжёлых предметов: спортивный инвентарь, мебель или строительные материалы.',
-    },
-    {
-      'image': 'assets/box_img/XL.png',
-      'title': 'XL Бокс',
-      'description':
-          'Для хранения самых объемных вещей, таких как мебель или крупное оборудование.',
-    },
-  ];
+  late Future<List<Product>> _futureProducts;
 
-  int _currentIndex = 0;
-  double _buttonHeight = 60.0; // Начальная высота кнопки
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  void _loadProducts() {
+    final productService = Provider.of<ProductService>(context, listen: false);
+    setState(() {
+      _futureProducts = productService.getProducts();
+    });
+  }
+
+  void _showProductOptions(BuildContext context, Product product) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('Редактировать'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _navigateToUpdateScreen(context, product);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete),
+            title: const Text('Удалить'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmDeleteProduct(context, product.id);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToUpdateScreen(BuildContext context, Product product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => UpdateProductScreen(
+          productId: product.id,
+          product: product,
+        ),
+      ),
+    ).then((_) => _loadProducts());
+  }
+
+  void _confirmDeleteProduct(BuildContext context, int productId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Подтверждение удаления'),
+        content: const Text('Вы уверены, что хотите удалить этот продукт?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _deleteProduct(productId);
+            },
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteProduct(int productId) async {
+    try {
+      final service = Provider.of<ProductService>(context, listen: false);
+      await service.deleteProduct(productId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Продукт успешно удален')),
+      );
+      _loadProducts();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: null, // Убираем AppBar
-      body: Container(
-        color: const Color(0xFFDCEAD3), // Основной цвет фона
-        child: Column(
-          children: [
-            // Слайдер с изображениями
-            CarouselSlider(
-              options: CarouselOptions(
-                height: 240.0,
-                autoPlay: true,
-                enlargeCenterPage: true,
-                viewportFraction: 0.75,
-                onPageChanged: (index, reason) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                },
-              ),
-              items: boxData.map((box) {
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8.0),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 15,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Image.asset(
-                      box['image']!,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 20),
+      appBar: AppBar(
+        title: const Text('Управление продуктами'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadProducts,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (ctx) => const AddProductScreen()),
+        ).then((_) => _loadProducts()),
+        child: const Icon(Icons.add),
+      ),
+      body: FutureBuilder<List<Product>>(
+        future: _futureProducts,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            // Текущая информация о боксе
+          if (snapshot.hasError) {
+            return Center(child: Text('Ошибка загрузки: ${snapshot.error}'));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text('Список продуктов пуст'));
+          }
+
+          final products = snapshot.data!;
+          return _buildProductsGrid(products);
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductsGrid(List<Product> products) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.75,
+        ),
+        itemCount: products.length,
+        itemBuilder: (context, index) {
+          final product = products[index];
+          return _buildProductCard(product);
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductCard(Product product) {
+    return GestureDetector(
+      onTap: () => _showProductOptions(context, product),
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(12)),
+                child: Image.network(
+                  product.imageUrls.isNotEmpty
+                      ? 'http://172.20.10.2:8000${product.imageUrls.first}'
+                      : 'https://via.placeholder.com/150',
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (ctx, error, stackTrace) =>
+                      const Icon(Icons.error_outline),
+                ),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(8.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    boxData[_currentIndex]['title']!,
-                    style: GoogleFonts.montserrat(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF4A6E2B),
-                    ),
-                  ),
-                  const SizedBox(
-                      height: 8), // Уменьшаем отступ между текстом и описанием
-                  Text(
-                    boxData[_currentIndex]['description']!,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.openSans(
+                    product.name,
+                    style: const TextStyle(
                       fontSize: 16,
-                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${product.price.toStringAsFixed(2)} ₸',
+                    style: const TextStyle(fontSize: 14),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 20), // Уменьшаем пространство до кнопки
-
-            // Кнопка перехода с анимацией
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: GestureDetector(
-                onTapDown: (_) {
-                  setState(() {
-                    _buttonHeight = 55.0; // Уменьшаем размер при нажатии
-                  });
-                },
-                onTapUp: (_) {
-                  setState(() {
-                    _buttonHeight = 60.0; // Восстанавливаем размер
-                  });
-                },
-                onTapCancel: () {
-                  setState(() {
-                    _buttonHeight = 60.0; // Восстанавливаем размер при отмене
-                  });
-                },
-                onTap: () {
-                  // Переход на экран выбора бокса
-                  Navigator.pushNamed(context, '/box-selection');
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  height: _buttonHeight,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C9942),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black38,
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    'Выбрать бокс',
-                    style: GoogleFonts.montserrat(
-                      fontSize: 18, // Увеличиваем размер текста
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
               ),
             ),
           ],

@@ -18,6 +18,7 @@ import 'services/category_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/about_screen.dart';
 import 'screens/my_cart_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/reset_password_screen.dart';
@@ -147,6 +148,7 @@ class MyApp extends StatelessWidget {
         '/reset-password': (_) => const ResetPasswordScreen(),
         '/admin-home': (_) => const AdminHomeScreen(),
         '/moderator-home': (_) => const ModeratorHomeScreen(),
+        '/about': (_) => const AboutScreen(),
       },
     );
   }

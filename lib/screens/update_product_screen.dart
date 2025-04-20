@@ -1,35 +1,50 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-
-import '../services/product_service.dart';
-import '../services/category_service.dart';
 import '../models/product.dart';
 import '../models/category.dart';
+import '../services/product_service.dart';
+import '../services/category_service.dart';
 
-class AddProductScreen extends StatefulWidget {
-  const AddProductScreen({super.key});
+class UpdateProductScreen extends StatefulWidget {
+  final int productId;
+  final Product product;
+
+  const UpdateProductScreen({
+    required this.productId,
+    required this.product,
+    Key? key,
+  }) : super(key: key);
 
   @override
-  State<AddProductScreen> createState() => _AddProductScreenState();
+  _UpdateProductScreenState createState() => _UpdateProductScreenState();
 }
 
-class _AddProductScreenState extends State<AddProductScreen> {
+class _UpdateProductScreenState extends State<UpdateProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _picker = ImagePicker();
 
-  int? _selectedCategoryId;
-  List<Category> _categories = [];
   List<File> _imageFiles = [];
+  List<Category> _categories = [];
+  int? _selectedCategoryId;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCategories());
+    _initializeData();
+    _loadCategories();
+  }
+
+  void _initializeData() {
+    _nameController.text = widget.product.name;
+    _descriptionController.text = widget.product.description;
+    _priceController.text = widget.product.price.toString();
+    _selectedCategoryId = widget.product.categoryId;
   }
 
   Future<void> _loadCategories() async {
@@ -63,7 +78,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (!_formKey.currentState!.validate() || _selectedCategoryId == null)
       return;
 
-    final product = ProductCreate(
+    final updatedProduct = ProductCreate(
       name: _nameController.text.trim(),
       description: _descriptionController.text.trim(),
       price: double.parse(_priceController.text.trim()),
@@ -72,10 +87,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     try {
       final service = context.read<ProductService>();
-      await service.addProduct(product: product, images: _imageFiles);
-      Navigator.pushReplacementNamed(context, '/moderator-home');
+      await service.updateProduct(
+        id: widget.productId,
+        product: updatedProduct,
+        images: _imageFiles,
+      );
+      Navigator.pop(context);
     } catch (e) {
-      _showError('Ошибка создания продукта: $e');
+      _showError('Ошибка обновления продукта: $e');
     }
   }
 
@@ -118,7 +137,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Добавить продукт')),
+      appBar: AppBar(title: const Text('Редактировать продукт')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -146,12 +165,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   return value == null ? 'Некорректная цена' : null;
                 },
               ),
+              const SizedBox(height: 16),
               DropdownButtonFormField<int>(
                 value: _selectedCategoryId,
                 decoration: const InputDecoration(labelText: 'Категория'),
                 items: _categories
-                    .map((c) =>
-                        DropdownMenuItem(value: c.id, child: Text(c.name)))
+                    .map((c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Text(c.name),
+                        ))
                     .toList(),
                 onChanged: (v) => setState(() => _selectedCategoryId = v),
                 validator: (v) => v == null ? 'Выберите категорию' : null,
@@ -164,13 +186,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
               ),
               if (_imageFiles.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                const Text('Выбранные изображения:'),
+                const Text('Новые изображения:'),
                 _buildImagePreview(),
               ],
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _submitForm,
-                child: const Text('Создать продукт'),
+                child: const Text('Сохранить изменения'),
               ),
             ],
           ),
