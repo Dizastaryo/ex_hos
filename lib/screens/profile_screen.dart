@@ -100,7 +100,7 @@ class ProfileScreen extends StatelessWidget {
                   // Кнопка выхода
                   ElevatedButton.icon(
                     onPressed: () async {
-                      await authProvider.logout();
+                      await authProvider.logout(context);
                       // Перенаправляем пользователя на страницу регистрации
                       Navigator.pushReplacementNamed(context, '/auth');
                     },

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
+import '../services/order_service.dart';
+import 'payment_screen.dart';
 
 class ProductDetailScreen extends StatelessWidget {
   final int productId;
@@ -85,7 +87,7 @@ class ProductDetailScreen extends StatelessWidget {
                       product.description,
                       style: const TextStyle(fontSize: 16),
                     ),
-                    const SizedBox(height: 100), // padding under buttons
+                    const SizedBox(height: 100),
                   ],
                 ),
               ),
@@ -153,14 +155,29 @@ class ProductDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: () {
-                    // TODO: логика покупки
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Покупка оформлена')),
-                    );
+                  onPressed: () async {
+                    try {
+                      final orderService =
+                          Provider.of<OrderService>(context, listen: false);
+                      final response = await orderService.createOrder(
+                        [
+                          {'product_id': product.id, 'quantity': 1}
+                        ],
+                        'Адрес доставки',
+                      );
 
-                    // Переход на экран заказов
-                    Navigator.pushNamed(context, '/orders');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PaymentScreen(orderId: response['id']),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ошибка создания заказа: $e')),
+                      );
+                    }
                   },
                   child: const Text(
                     'Купить',

@@ -1,9 +1,10 @@
+// lib/screens/my_cart_screen.dart
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
-
-// Импортируй ProductsScreen
-import 'products_screen.dart'; // Убедись, что путь корректный
+import '../services/product_service.dart';
+import '../services/order_service.dart';
+import 'products_screen.dart';
+import 'orders_screen.dart';
 
 class MyCartScreen extends StatefulWidget {
   const MyCartScreen({super.key});
@@ -13,23 +14,25 @@ class MyCartScreen extends StatefulWidget {
 }
 
 class _MyCartScreenState extends State<MyCartScreen> {
-  late Dio dio;
+  late ProductService productService;
+  late OrderService orderService;
   bool isLoading = true;
   Map<String, dynamic>? cartData;
 
   @override
   void initState() {
     super.initState();
-    dio = Provider.of<Dio>(context, listen: false);
+    productService = Provider.of<ProductService>(context, listen: false);
+    orderService = Provider.of<OrderService>(context, listen: false);
     _loadCart();
   }
 
   Future<void> _loadCart() async {
     setState(() => isLoading = true);
     try {
-      final response = await dio.get('http://172.20.10.2:8000/cart/');
+      final data = await productService.getCart();
       setState(() {
-        cartData = response.data;
+        cartData = data;
         isLoading = false;
       });
     } catch (e) {
@@ -41,13 +44,28 @@ class _MyCartScreenState extends State<MyCartScreen> {
   }
 
   Future<void> _removeItem(int productId) async {
-    await dio.delete('http://172.20.10.2:8000/cart/remove/$productId');
+    await productService.removeFromCart(productId);
     await _loadCart();
   }
 
   Future<void> _clearCart() async {
-    await dio.delete('http://172.20.10.2:8000/cart/clear');
+    await productService.clearCart();
     await _loadCart();
+  }
+
+  void _buySingleItem(Map<String, dynamic> item) {
+    final items = [
+      {
+        'product_id': item['product']['id'] as int, // Явное приведение типа
+        'quantity': item['quantity'] as int
+      }
+    ];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OrdersScreen(items: items),
+      ),
+    );
   }
 
   @override
@@ -97,13 +115,30 @@ class _MyCartScreenState extends State<MyCartScreen> {
                           return ListTile(
                             leading: const Icon(Icons.shopping_bag),
                             title: Text(item['product']['name']),
-                            subtitle: Text(
-                              '${item['quantity']} x ${item['product']['price']} ₸',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Количество: ${item['quantity']}'),
+                                Text(
+                                  'Сумма: ${(item['product']['price'] * item['quantity']).toStringAsFixed(2)} ₸',
+                                ),
+                              ],
                             ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () =>
-                                  _removeItem(item['product']['id']),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.shopping_cart_checkout,
+                                      color: Colors.green),
+                                  onPressed: () => _buySingleItem(item),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () =>
+                                      _removeItem(item['product']['id']),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -115,7 +150,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Итого:',
+                            'Общий итог:',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,

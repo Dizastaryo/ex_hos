@@ -90,14 +90,18 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
+  Future<void> logout(BuildContext context) async {
     try {
-      await _authService.logout();
-    } finally {
+      // Просто очищаем данные и переходим на экран авторизации
       await _clearCredentials();
       _token = null;
       currentUser = null;
       notifyListeners();
+
+      // Переход в экран авторизации
+      Navigator.pushReplacementNamed(context, '/auth');
+    } catch (e) {
+      throw Exception('Logout error: $e');
     }
   }
 
@@ -109,7 +113,6 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      await logout();
       throw Exception('Token refresh failed: $e');
     }
   }

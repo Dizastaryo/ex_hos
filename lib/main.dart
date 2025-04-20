@@ -13,9 +13,15 @@ import 'providers/auth_provider.dart';
 // Services
 import 'services/product_service.dart';
 import 'services/category_service.dart';
+import 'services/order_service.dart';
 
 // Screens
+import 'screens/product_detail_screen.dart';
+import 'screens/payment_screen.dart';
+import 'screens/payment_status_screen.dart';
 import 'screens/home_screen.dart';
+
+import 'screens/my_orders_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/about_screen.dart';
@@ -69,7 +75,6 @@ void main() async {
           error.requestOptions.extra['retry'] = true;
           return handler.resolve(await dio.fetch(error.requestOptions));
         } catch (e) {
-          await authProvider.logout();
           return handler.next(error);
         }
       }
@@ -85,6 +90,7 @@ void main() async {
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         Provider<ProductService>(create: (_) => ProductService(dio)),
         Provider<CategoryService>(create: (_) => CategoryService(dio)),
+        Provider<OrderService>(create: (_) => OrderService(dio)),
       ],
       child: const MyApp(),
     ),
@@ -149,6 +155,16 @@ class MyApp extends StatelessWidget {
         '/admin-home': (_) => const AdminHomeScreen(),
         '/moderator-home': (_) => const ModeratorHomeScreen(),
         '/about': (_) => const AboutScreen(),
+        '/product-detail': (context) => ProductDetailScreen(
+              productId: ModalRoute.of(context)!.settings.arguments as int,
+            ),
+        '/orders': (context) => const MyOrdersScreen(),
+        '/payment': (context) => PaymentScreen(
+              orderId: ModalRoute.of(context)!.settings.arguments as int,
+            ),
+        '/payment-status': (context) => PaymentStatusScreen(
+              orderId: ModalRoute.of(context)!.settings.arguments as int,
+            ),
       },
     );
   }

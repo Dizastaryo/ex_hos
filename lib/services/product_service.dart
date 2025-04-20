@@ -99,20 +99,31 @@ class ProductService {
     }
   }
 
+  Future<Map<String, dynamic>> getCart() async {
+    final response = await _dio.get('$_baseUrl/cart/');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<void> addToCart(int productId, {int quantity = 1}) async {
-    try {
-      await _dio.post(
-        '$_baseUrl/cart/add',
-        data: {
-          'product_id': productId,
-          'quantity': quantity,
-        },
-      );
-    } on DioException catch (e) {
-      throw _formatError(e);
-    } catch (e) {
-      throw 'Ошибка при добавлении в корзину: $e';
-    }
+    await _dio.post(
+      '$_baseUrl/cart/add',
+      data: {'product_id': productId, 'quantity': quantity},
+    );
+  }
+
+  Future<void> updateCart(int productId, int quantity) async {
+    await _dio.put(
+      '$_baseUrl/cart/update',
+      data: {'product_id': productId, 'quantity': quantity},
+    );
+  }
+
+  Future<void> removeFromCart(int productId) async {
+    await _dio.delete('$_baseUrl/cart/remove/$productId');
+  }
+
+  Future<void> clearCart() async {
+    await _dio.delete('$_baseUrl/cart/clear');
   }
 
   String _formatError(DioException e) {

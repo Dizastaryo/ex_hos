@@ -3,6 +3,7 @@ import 'products_screen.dart'; // Экран "О компании"
 import 'profile_screen.dart'; // Экран профиля
 import 'my_cart_screen.dart'; // Экран "Мои аренды"
 import 'notifications_screen.dart'; // Экран уведомлений
+import 'my_orders_screen.dart'; // Экран "Мои аренды"
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _pages = [
     ProductsScreen(),
     MyCartScreen(),
+    MyOrdersScreen(),
     ProfileScreen(),
   ];
 
