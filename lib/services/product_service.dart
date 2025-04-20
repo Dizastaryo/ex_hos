@@ -90,6 +90,31 @@ class ProductService {
     });
   }
 
+  Future<Product> getProductById(int id) async {
+    try {
+      final response = await _dio.get('$_baseUrl/products/$id');
+      return Product.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _formatError(e);
+    }
+  }
+
+  Future<void> addToCart(int productId, {int quantity = 1}) async {
+    try {
+      await _dio.post(
+        '$_baseUrl/cart/add',
+        data: {
+          'product_id': productId,
+          'quantity': quantity,
+        },
+      );
+    } on DioException catch (e) {
+      throw _formatError(e);
+    } catch (e) {
+      throw 'Ошибка при добавлении в корзину: $e';
+    }
+  }
+
   String _formatError(DioException e) {
     return e.response != null
         ? 'Ошибка ${e.response?.statusCode}: ${e.response?.data}'

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'about_screen.dart';
 import 'orders_screen.dart';
-import 'products_screen.dart';
+import 'profile_screen.dart';
 
 class ModeratorHomeScreen extends StatefulWidget {
   const ModeratorHomeScreen({Key? key}) : super(key: key);
@@ -13,10 +13,10 @@ class ModeratorHomeScreen extends StatefulWidget {
 class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
   int _currentPage = 0;
 
-  final List<Widget> _pages = const [
-    ProductsScreen(),
+  final List<Widget> _pages = [
     OrdersScreen(),
     AboutScreen(),
+    ProfileScreen(),
   ];
 
   @override
@@ -46,17 +46,17 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shop_outlined),
             activeIcon: Icon(Icons.shop),
-            label: 'Продукты',
+            label: 'Заказы',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt_outlined),
             activeIcon: Icon(Icons.list_alt),
-            label: 'Заказы',
+            label: 'Управление',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.add_box_outlined),
-            activeIcon: Icon(Icons.add_box),
-            label: 'Управление',
+            icon: Icon(Icons.account_circle_outlined), // Современная иконка
+            activeIcon: Icon(Icons.account_circle),
+            label: 'Профил',
           ),
         ],
       ),

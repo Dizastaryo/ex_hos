@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'product_detail_screen.dart';
 import '../services/product_service.dart';
 import '../models/product.dart';
 
@@ -59,7 +60,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     : 'https://via.placeholder.com/150';
                 return GestureDetector(
                   onTap: () {
-                    // TODO: открыть детали продукта
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProductDetailScreen(productId: product.id),
+                      ),
+                    );
                   },
                   child: Card(
                     elevation: 4,

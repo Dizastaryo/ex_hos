@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'about_screen.dart'; // Экран "О компании"
+import 'products_screen.dart'; // Экран "О компании"
 import 'profile_screen.dart'; // Экран профиля
 import 'my_cart_screen.dart'; // Экран "Мои аренды"
 import 'notifications_screen.dart'; // Экран уведомлений
@@ -13,7 +13,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   var _currentPage = 0;
   final List<Widget> _pages = [
-    AboutScreen(),
+    ProductsScreen(),
     MyCartScreen(),
     ProfileScreen(),
   ];
