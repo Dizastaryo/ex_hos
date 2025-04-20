@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
@@ -20,11 +22,9 @@ import 'screens/product_detail_screen.dart';
 import 'screens/payment_screen.dart';
 import 'screens/payment_status_screen.dart';
 import 'screens/home_screen.dart';
-
 import 'screens/my_orders_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/support_screen.dart';
-
 import 'screens/auth_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/my_cart_screen.dart';
@@ -50,20 +50,18 @@ void main() async {
 
   // Настройка Dio и CookieJar
   final dio = Dio();
-  final directory = await getApplicationDocumentsDirectory(); // Теперь работает
+  final directory = await getApplicationDocumentsDirectory();
   final cookieJar = PersistCookieJar(
     storage: FileStorage("${directory.path}/.cookies/"),
   );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Исправленный вызов конструктора AuthProvider
-  final authProvider =
-      AuthProvider(dio, cookieJar); // Теперь принимает 2 аргумента
+  // AuthProvider
+  final authProvider = AuthProvider(dio, cookieJar);
 
-  // Настройка интерцепторов
+  // Интерцепторы Dio
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {
-      // Добавляем access token
       if (authProvider.token != null) {
         options.headers['Authorization'] = 'Bearer ${authProvider.token}';
       }
@@ -76,7 +74,7 @@ void main() async {
           await authProvider.refreshToken();
           error.requestOptions.extra['retry'] = true;
           return handler.resolve(await dio.fetch(error.requestOptions));
-        } catch (e) {
+        } catch (_) {
           return handler.next(error);
         }
       }
@@ -145,35 +143,108 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       initialRoute: '/splash',
-      routes: {
-        '/splash': (_) => SplashScreen(),
-        '/auth': (_) => const AuthScreen(),
-        '/main': (_) => const HomeScreen(),
-        '/products': (_) => const ProductsScreen(),
-        '/add-product': (_) => const AddProductScreen(),
-        '/my-cart': (_) => const MyCartScreen(),
-        '/notifications': (_) => const NotificationsScreen(),
-        '/reset-password': (_) => const ResetPasswordScreen(),
-        '/admin-home': (_) => const AdminHomeScreen(),
-        '/moderator-home': (_) => const ModeratorHomeScreen(),
-        '/support': (_) => SupportScreen(),
-        '/about': (_) => const AboutScreen(),
-        '/product-detail': (context) => ProductDetailScreen(
-              productId: ModalRoute.of(context)!.settings.arguments as int,
-            ),
-        '/orders': (context) => const MyOrdersScreen(),
-        '/payment': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments
-              as Map<String, dynamic>;
-          return PaymentScreen(
-            orderId: args['orderId'] as int,
-            orderTotal: args['orderTotal'] as double,
-          );
-        },
-        '/payment-status': (context) => PaymentStatusScreen(
-              orderId: ModalRoute.of(context)!.settings.arguments as int,
-            ),
+      onGenerateRoute: (settings) {
+        Widget page;
+        switch (settings.name) {
+          case '/splash':
+            page = const SplashScreen();
+            break;
+          case '/auth':
+            page = const AuthScreen();
+            break;
+          case '/main':
+            page = const HomeScreen();
+            break;
+          case '/products':
+            page = const ProductsScreen();
+            break;
+          case '/add-product':
+            page = const AddProductScreen();
+            break;
+          case '/my-cart':
+            page = const MyCartScreen();
+            break;
+          case '/notifications':
+            page = const NotificationsScreen();
+            break;
+          case '/reset-password':
+            page = const ResetPasswordScreen();
+            break;
+          case '/admin-home':
+            page = const AdminHomeScreen();
+            break;
+          case '/moderator-home':
+            page = const ModeratorHomeScreen();
+            break;
+          case '/support':
+            page = SupportScreen();
+            break;
+          case '/about':
+            page = const AboutScreen();
+            break;
+          case '/product-detail':
+            final id = settings.arguments as int;
+            page = ProductDetailScreen(productId: id);
+            break;
+          case '/orders':
+            page = const MyOrdersScreen();
+            break;
+          case '/payment':
+            final args = settings.arguments as Map<String, dynamic>;
+            page = PaymentScreen(
+              orderId: args['orderId'] as int,
+              orderTotal: args['orderTotal'] as double,
+            );
+            break;
+          case '/payment-status':
+            final pid = settings.arguments as int;
+            page = PaymentStatusScreen(orderId: pid);
+            break;
+          default:
+            page = const SplashScreen();
+        }
+        return CircularRevealRoute(page: page);
       },
     );
+  }
+}
+
+class CircularRevealRoute extends PageRouteBuilder {
+  final Widget page;
+  CircularRevealRoute({required this.page})
+      : super(
+          transitionDuration: const Duration(milliseconds: 700),
+          pageBuilder: (context, animation, secondaryAnimation) => page,
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return ClipOval(
+              clipper: CircleRevealClipper(
+                fraction: animation.value,
+                centerOffset: Offset(
+                  MediaQuery.of(context).size.width / 2,
+                  MediaQuery.of(context).size.height / 2,
+                ),
+              ),
+              child: child,
+            );
+          },
+        );
+}
+
+class CircleRevealClipper extends CustomClipper<Rect> {
+  final double fraction;
+  final Offset centerOffset;
+
+  CircleRevealClipper({required this.fraction, required this.centerOffset});
+
+  @override
+  Rect getClip(Size size) {
+    final maxRadius = sqrt(size.width * size.width + size.height * size.height);
+    final radius = maxRadius * fraction;
+    return Rect.fromCircle(center: centerOffset, radius: radius);
+  }
+
+  @override
+  bool shouldReclip(CircleRevealClipper old) {
+    return fraction != old.fraction;
   }
 }

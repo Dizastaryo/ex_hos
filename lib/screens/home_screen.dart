@@ -44,14 +44,14 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Image.asset(
-                  'assets/amanzat_logo.png',
+                  'assets/logo.png',
                   height: 30,
                 ),
               ),
             ),
             const SizedBox(width: 10),
             const Text(
-              'SANDYQ',
+              'Aidyn Market',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.black,

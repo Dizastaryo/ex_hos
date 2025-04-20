@@ -10,28 +10,27 @@ class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
-  _AuthScreenState createState() => _AuthScreenState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  final _regFormKey = GlobalKey<FormState>();
-  final _regUsernameController = TextEditingController();
-  final _regEmailController = TextEditingController();
-  final _regPhoneController = TextEditingController();
-  final _regOtpController = TextEditingController();
-  final _regPasswordController = TextEditingController();
+  final _regKey = GlobalKey<FormState>();
+  final _loginKey = GlobalKey<FormState>();
+  final _usernameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _loginCtrl = TextEditingController();
+  final _loginPassCtrl = TextEditingController();
+
   RegistrationMode _regMode = RegistrationMode.email;
-  bool _isRegCodeSent = false;
-
-  final _loginFormKey = GlobalKey<FormState>();
-  final _loginController = TextEditingController();
-  final _loginPasswordController = TextEditingController();
-  bool _isPasswordVisible = false;
-
-  bool _isLoading = false;
+  bool _codeSent = false;
+  bool _loading = false;
+  bool _passVisible = false;
 
   @override
   void initState() {
@@ -39,276 +38,265 @@ class _AuthScreenState extends State<AuthScreen>
     _tabController = TabController(length: 2, vsync: this);
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: Theme.of(context).primaryColor,
-      ),
-    );
-  }
+  void _showSnack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
-  Widget _buildTextField({
-    required String hint,
-    required IconData icon,
-    required TextEditingController controller,
-    required String? Function(String?) validator,
-    bool obscure = false,
-    VoidCallback? toggleVisibility,
-  }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscure,
-      validator: validator,
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon, color: Theme.of(context).primaryColor),
-        suffixIcon: toggleVisibility == null
-            ? null
-            : IconButton(
-                icon: Icon(
-                  obscure ? Icons.visibility_off : Icons.visibility,
-                  color: Theme.of(context).primaryColor,
-                ),
-                onPressed: toggleVisibility,
-              ),
+  InputDecoration _inputDec(String hint, IconData icon) => InputDecoration(
         filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(
+        fillColor: Colors.white.withOpacity(0.9),
+        hintText: hint,
+        prefixIcon: Icon(icon, color: Colors.deepPurple),
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
+        enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-      ),
-    );
-  }
-
-  Widget _buildRegisterTab() {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    return Form(
-      key: _regFormKey,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ChoiceChip(
-                  label: const Text('Email'),
-                  selected: _regMode == RegistrationMode.email,
-                  onSelected: (_) => setState(() {
-                    _regMode = RegistrationMode.email;
-                    _isRegCodeSent = false;
-                  }),
-                ),
-                const SizedBox(width: 12),
-                ChoiceChip(
-                  label: const Text('Phone'),
-                  selected: _regMode == RegistrationMode.phone,
-                  onSelected: (_) => setState(() {
-                    _regMode = RegistrationMode.phone;
-                    _isRegCodeSent = false;
-                  }),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (!_isRegCodeSent) ...[
-              if (_regMode == RegistrationMode.email)
-                _buildTextField(
-                  hint: 'Email',
-                  icon: Icons.email,
-                  controller: _regEmailController,
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Введите email';
-                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(v))
-                      return 'Некорректный email';
-                    return null;
-                  },
-                ),
-              if (_regMode == RegistrationMode.phone)
-                _buildTextField(
-                  hint: 'Phone (+7...)',
-                  icon: Icons.phone,
-                  controller: _regPhoneController,
-                  validator: (v) =>
-                      v == null || v.isEmpty ? 'Введите телефон' : null,
-                ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_regFormKey.currentState?.validate() ?? false) {
-                    setState(() => _isLoading = true);
-                    try {
-                      if (_regMode == RegistrationMode.email) {
-                        await auth
-                            .sendEmailOtp(_regEmailController.text.trim());
-                        _showSnack('OTP sent to email');
-                      } else {
-                        await auth.sendSmsOtp(_regPhoneController.text.trim());
-                        _showSnack('OTP sent to phone');
-                      }
-                      setState(() => _isRegCodeSent = true);
-                    } catch (e) {
-                      _showSnack('Ошибка: \$e');
-                    } finally {
-                      setState(() => _isLoading = false);
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text('Send OTP'.toUpperCase()),
-              ),
-            ],
-            if (_isRegCodeSent) ...[
-              _buildTextField(
-                hint: 'Username',
-                icon: Icons.person,
-                controller: _regUsernameController,
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Введите имя пользователя' : null,
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                hint: 'Enter OTP',
-                icon: Icons.sms,
-                controller: _regOtpController,
-                validator: (v) => v == null || v.isEmpty ? 'Введите OTP' : null,
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                hint: 'Password',
-                icon: Icons.lock,
-                controller: _regPasswordController,
-                obscure: !_isPasswordVisible,
-                toggleVisibility: () =>
-                    setState(() => _isPasswordVisible = !_isPasswordVisible),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Введите пароль';
-                  if (v.length < 6) return 'Минимум 6 символов';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_regFormKey.currentState?.validate() ?? false) {
-                    setState(() => _isLoading = true);
-                    try {
-                      if (_regMode == RegistrationMode.email) {
-                        await auth.verifyEmailOtp(
-                          _regEmailController.text.trim(),
-                          _regOtpController.text.trim(),
-                        );
-                        await auth.registerWithEmail(
-                          _regUsernameController.text.trim(),
-                          _regEmailController.text.trim(),
-                          _regPasswordController.text.trim(),
-                          _regOtpController.text.trim(),
-                        );
-                      } else {
-                        await auth.verifySmsOtp(
-                          _regPhoneController.text.trim(),
-                          _regOtpController.text.trim(),
-                        );
-                        await auth.registerWithPhone(
-                          _regUsernameController.text.trim(),
-                          _regPhoneController.text.trim(),
-                          _regPasswordController.text.trim(),
-                          _regOtpController.text.trim(),
-                        );
-                      }
-                      Navigator.pushReplacementNamed(context, '/main');
-                    } catch (e) {
-                      _showSnack('Ошибка: \$e');
-                    } finally {
-                      setState(() => _isLoading = false);
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text('Complete Registration'.toUpperCase()),
-              ),
-            ],
-          ],
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.deepPurple),
         ),
+      );
+
+  Widget _buildToggle() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: RegistrationMode.values.map((mode) {
+        final selected = mode == _regMode;
+        return AnimatedContainer(
+          duration: 300.ms,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? Colors.deepPurple : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.4),
+                        blurRadius: 8)
+                  ]
+                : null,
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => setState(() {
+              _regMode = mode;
+              _codeSent = false;
+            }),
+            child: Text(
+              mode == RegistrationMode.email ? 'Email' : 'Phone',
+              style: TextStyle(
+                color: selected ? Colors.white : Colors.deepPurple,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildText(String hint, IconData icon, TextEditingController ctrl,
+      String? Function(String?) validator,
+      {bool obscure = false, VoidCallback? toggle}) {
+    return TextFormField(
+      controller: ctrl,
+      validator: validator,
+      obscureText: obscure,
+      decoration: _inputDec(hint, icon).copyWith(
+        suffixIcon: toggle != null
+            ? IconButton(
+                icon: Icon(obscure ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.deepPurple),
+                onPressed: toggle,
+              )
+            : null,
       ),
     );
   }
 
-  Widget _buildLoginTab() {
+  Widget _buildRegister() {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     return Form(
-      key: _loginFormKey,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildTextField(
-              hint: 'Email/Username/Phone',
-              icon: Icons.person,
-              controller: _loginController,
-              validator: (v) => v == null || v.isEmpty ? 'Введите логин' : null,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              hint: 'Password',
-              icon: Icons.lock,
-              controller: _loginPasswordController,
-              obscure: !_isPasswordVisible,
-              toggleVisibility: () =>
-                  setState(() => _isPasswordVisible = !_isPasswordVisible),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Введите пароль';
-                if (v.length < 6) return 'Минимум 6 символов';
-                return null;
-              },
-            ),
-            const SizedBox(height: 20),
+      key: _regKey,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        children: [
+          _buildToggle(),
+          const SizedBox(height: 24),
+          if (!_codeSent) ...[
+            if (_regMode == RegistrationMode.email)
+              _buildText(
+                'Email',
+                Icons.email,
+                _emailCtrl,
+                (v) => v!.isEmpty ? 'Введите email' : null,
+              ),
+            if (_regMode == RegistrationMode.phone)
+              _buildText(
+                'Phone',
+                Icons.phone,
+                _phoneCtrl,
+                (v) => v!.isEmpty ? 'Введите телефон' : null,
+              ),
+            const SizedBox(height: 24),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
               onPressed: () async {
-                if (_loginFormKey.currentState?.validate() ?? false) {
-                  setState(() => _isLoading = true);
+                if (_regKey.currentState!.validate()) {
+                  setState(() => _loading = true);
                   try {
-                    await auth.login(
-                      _loginController.text.trim(),
-                      _loginPasswordController.text.trim(),
-                      context,
-                    );
+                    if (_regMode == RegistrationMode.email) {
+                      await auth.sendEmailOtp(_emailCtrl.text.trim());
+                      _showSnack('OTP отправлен на email');
+                    } else {
+                      await auth.sendSmsOtp(_phoneCtrl.text.trim());
+                      _showSnack('OTP отправлен на телефон');
+                    }
+                    setState(() => _codeSent = true);
                   } catch (e) {
-                    _showSnack('Ошибка: \$e');
+                    _showSnack('Ошибка: $e');
                   } finally {
-                    setState(() => _isLoading = false);
+                    setState(() => _loading = false);
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Text('Login'.toUpperCase()),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pushNamed(context, '/my-resetpas'),
-              child: Text(
-                'Забыли пароль?',
-                style: TextStyle(color: Theme.of(context).primaryColor),
-              ),
+              child: const Text('Send OTP'),
             ),
           ],
-        ),
+          if (_codeSent) ...[
+            _buildText(
+              'Enter OTP',
+              Icons.sms,
+              _otpCtrl,
+              (v) => v!.isEmpty ? 'Введите OTP' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildText(
+              'Username',
+              Icons.person,
+              _usernameCtrl,
+              (v) => v!.isEmpty ? 'Введите username' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildText(
+              'Password',
+              Icons.lock,
+              _passCtrl,
+              (v) => v!.length < 6 ? 'Минимум 6 символов' : null,
+              obscure: !_passVisible,
+              toggle: () => setState(() => _passVisible = !_passVisible),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              onPressed: () async {
+                if (_regKey.currentState!.validate()) {
+                  setState(() => _loading = true);
+                  try {
+                    if (_regMode == RegistrationMode.email) {
+                      await auth.verifyEmailOtp(
+                        _emailCtrl.text.trim(),
+                        _otpCtrl.text.trim(),
+                      );
+                      await auth.registerWithEmail(
+                        _usernameCtrl.text.trim(),
+                        _emailCtrl.text.trim(),
+                        _passCtrl.text.trim(),
+                        _otpCtrl.text.trim(),
+                      );
+                    } else {
+                      await auth.verifySmsOtp(
+                        _phoneCtrl.text.trim(),
+                        _otpCtrl.text.trim(),
+                      );
+                      await auth.registerWithPhone(
+                        _usernameCtrl.text.trim(),
+                        _phoneCtrl.text.trim(),
+                        _passCtrl.text.trim(),
+                        _otpCtrl.text.trim(),
+                      );
+                    }
+                    Navigator.pushReplacementNamed(context, '/main');
+                  } catch (e) {
+                    _showSnack('Ошибка: $e');
+                  } finally {
+                    setState(() => _loading = false);
+                  }
+                }
+              },
+              child: const Text('Complete Registration'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogin() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    return Form(
+      key: _loginKey,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        children: [
+          _buildText(
+            'Email/Username/Phone',
+            Icons.person,
+            _loginCtrl,
+            (v) => v!.isEmpty ? 'Введите логин' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildText(
+            'Password',
+            Icons.lock,
+            _loginPassCtrl,
+            (v) => v!.length < 6 ? 'Минимум 6 символов' : null,
+            obscure: !_passVisible,
+            toggle: () => setState(() => _passVisible = !_passVisible),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            onPressed: () async {
+              if (_loginKey.currentState!.validate()) {
+                setState(() => _loading = true);
+                try {
+                  await auth.login(
+                    _loginCtrl.text.trim(),
+                    _loginPassCtrl.text.trim(),
+                    context,
+                  );
+                } catch (e) {
+                  _showSnack('Ошибка: $e');
+                } finally {
+                  setState(() => _loading = false);
+                }
+              }
+            },
+            child: const Text('Login'),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => Navigator.pushNamed(context, '/my-resetpas'),
+            child: const Text('Забыли пароль?'),
+          ),
+        ],
       ),
     );
   }
@@ -321,75 +309,73 @@ class _AuthScreenState extends State<AuthScreen>
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 12,
-                            offset: Offset(0, 6))
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Animate(
-                          effects: [FadeEffect(duration: 600.ms)],
-                          child: Text(
-                            'Добро пожаловать!',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).primaryColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TabBar(
-                          controller: _tabController,
-                          indicatorColor: Theme.of(context).primaryColor,
-                          labelColor: Theme.of(context).primaryColor,
-                          unselectedLabelColor:
-                              Theme.of(context).primaryColor.withOpacity(0.6),
-                          tabs: const [
-                            Tab(text: 'Регистрация'),
-                            Tab(text: 'Вход')
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          height: 400,
-                          child: TabBarView(
-                            controller: _tabController,
-                            children: [_buildRegisterTab(), _buildLoginTab()],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                colors: [Color(0xFFEDE7F6), Color(0xFFD1C4E9)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
           ),
-          if (_isLoading)
-            Center(
-              child: Lottie.asset(
-                'assets/animation/loading_animation.json',
-                width: 100,
-                height: 100,
+          Center(
+            child: Lottie.asset(
+              'assets/animation/logo_animation.json',
+              width: 150,
+              height: 150,
+            ),
+          ),
+          Column(
+            children: [
+              const SizedBox(height: 280),
+              Text('Добро пожаловать!',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ))
+                ..animate().fadeIn(delay: 500.ms),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  elevation: 12,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TabBar(
+                        controller: _tabController,
+                        indicator: BoxDecoration(
+                          color: Colors.deepPurple,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        labelColor: Colors.white,
+                        unselectedLabelColor: Colors.deepPurple,
+                        tabs: const [
+                          Tab(text: 'Регистрация'),
+                          Tab(text: 'Вход'),
+                        ],
+                      ),
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.5,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [_buildRegister(), _buildLogin()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_loading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                ),
               ),
             ),
         ],

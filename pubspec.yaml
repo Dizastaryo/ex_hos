@@ -1,4 +1,4 @@
-name: amanzat_app
+name: aidyn_market
 description: "A warehouse storage Flutter app for Amanzat."
 publish_to: 'none'  # Уберите эту строку, если хотите опубликовать на pub.dev
 version: 1.0.0+1
@@ -42,13 +42,11 @@ flutter:
 
   # Укажите папку с изображениями
   assets:
-    - assets/box_img/
-    - assets/amanzat_logo.png
+    - assets/logo.png
     - assets/animation/
-    - assets/intro.mp4
     
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/amanzat_logo.png"
+  image_path: "assets/logo.png"

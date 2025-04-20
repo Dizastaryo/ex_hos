@@ -64,12 +64,18 @@ class OrderService {
         : 'Сетевая ошибка: ${e.message}';
   }
 
+  Future<Map<String, dynamic>> updateOrderStatus(
+      int orderId, String newStatus) async {
+    final response = await _dio.put(
+      '$_baseUrl/admin/orders/$orderId/status',
+      queryParameters: {'status': newStatus},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Для админа/модератора — получить все заказы
   Future<List<dynamic>> getAllOrders() async {
-    try {
-      final response = await _dio.get('$_baseUrl/orders/all');
-      return response.data as List<dynamic>;
-    } catch (e) {
-      throw Exception('Не удалось получить все заказы');
-    }
+    final response = await _dio.get('$_baseUrl/all');
+    return response.data as List<dynamic>;
   }
 }
