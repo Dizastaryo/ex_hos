@@ -41,7 +41,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки корзины: $e')),
+        SnackBar(content: Text('Ошибка загрузки корзины: \$e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -56,7 +56,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления количества: $e')),
+        SnackBar(content: Text('Ошибка обновления количества: \$e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -87,7 +87,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка удаления товара: $e')),
+        SnackBar(content: Text('Ошибка удаления товара: \$e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -120,7 +120,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка очистки корзины: $e')),
+        SnackBar(content: Text('Ошибка очистки корзины: \$e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -166,29 +166,27 @@ class _MyCartScreenState extends State<MyCartScreen> {
     );
   }
 
-  Widget _buildEmptyCart() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.shopping_cart_outlined,
-              size: 80, color: Colors.grey),
-          const SizedBox(height: 20),
-          const Text('Ваша корзина пуста',
-              style: TextStyle(fontSize: 18, color: Colors.grey)),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.search),
-            label: const Text('Перейти к товарам'),
-            onPressed: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const ProductsScreen()),
+  Widget _buildEmptyCart() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.shopping_cart_outlined,
+                size: 80, color: Colors.grey),
+            const SizedBox(height: 20),
+            const Text('Ваша корзина пуста',
+                style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.search),
+              label: const Text('Перейти к товарам'),
+              onPressed: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const ProductsScreen()),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   Widget _buildCartItem(Map<String, dynamic> item) {
     final productData = item['product'] as Map<String, dynamic>?;
@@ -207,53 +205,77 @@ class _MyCartScreenState extends State<MyCartScreen> {
         ? 'http://172.20.10.2:8000${images.first['image_url']}'
         : 'https://via.placeholder.com/150';
 
-    return ListTile(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: id)),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(imgUrl, width: 60, height: 60, fit: BoxFit.cover),
-      ),
-      title: Text(name),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('${price.toStringAsFixed(2)} ₸ x $qty'),
-          Text('Итого: ${(price * qty).toStringAsFixed(2)} ₸',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: () => _updateQuantity(id, qty - 1),
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(imgUrl,
+                  width: 60, height: 60, fit: BoxFit.cover),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => ProductDetailScreen(productId: id)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('${price.toStringAsFixed(2)} ₸ x $qty'),
+                    Text('Итого: ${(price * qty).toStringAsFixed(2)} ₸',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: () => _updateQuantity(id, qty - 1),
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                        Text(qty.toString()),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: () => _updateQuantity(id, qty + 1),
+                          constraints: const BoxConstraints(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              Text(qty.toString()),
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: () => _updateQuantity(id, qty + 1),
-              ),
-            ],
-          ),
-        ],
-      ),
-      trailing: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_forward_ios),
-            onPressed: () => _navigateToCheckout([
-              {'product_id': id, 'quantity': qty}
-            ]),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            color: Colors.red,
-            onPressed: () => _removeItem(id),
-          ),
-        ],
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_forward_ios),
+                  onPressed: () => _navigateToCheckout([
+                    {'product_id': id, 'quantity': qty}
+                  ]),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  color: Colors.red,
+                  onPressed: () => _removeItem(id),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
