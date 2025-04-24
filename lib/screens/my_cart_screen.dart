@@ -1,3 +1,4 @@
+// lib/screens/my_cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/product_service.dart';
@@ -32,7 +33,6 @@ class _MyCartScreenState extends State<MyCartScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await _productService.getCart();
-      // Преобразуем в List<Map<String, dynamic>> корректно
       final rawItems = response['items'] as List<dynamic>? ?? [];
       final parsedItems =
           rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -50,6 +50,12 @@ class _MyCartScreenState extends State<MyCartScreen> {
     }
   }
 
+  Future<void> _updateQuantity(int productId, int newQty) async {
+    if (newQty < 1) return;
+    await _productService.updateCart(productId, newQty);
+    await _loadCart();
+  }
+
   Future<void> _removeItem(int productId) async {
     await _productService.removeFromCart(productId);
     await _loadCart();
@@ -57,12 +63,6 @@ class _MyCartScreenState extends State<MyCartScreen> {
 
   Future<void> _clearCart() async {
     await _productService.clearCart();
-    await _loadCart();
-  }
-
-  Future<void> _updateQuantity(int productId, int newQuantity) async {
-    if (newQuantity < 1) return;
-    await _productService.updateCart(productId, newQuantity);
     await _loadCart();
   }
 
@@ -96,9 +96,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
                       child: ListView.separated(
                         itemCount: _cartItems.length,
                         separatorBuilder: (_, __) => const Divider(),
-                        itemBuilder: (context, index) {
-                          return _buildCartItem(_cartItems[index]);
-                        },
+                        itemBuilder: (_, i) => _buildCartItem(_cartItems[i]),
                       ),
                     ),
                     _buildTotalSection(),
@@ -112,16 +110,11 @@ class _MyCartScreenState extends State<MyCartScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
-            Icons.shopping_cart_outlined,
-            size: 80,
-            color: Colors.grey,
-          ),
+          const Icon(Icons.shopping_cart_outlined,
+              size: 80, color: Colors.grey),
           const SizedBox(height: 20),
-          const Text(
-            'Ваша корзина пуста',
-            style: TextStyle(fontSize: 18, color: Colors.grey),
-          ),
+          const Text('Ваша корзина пуста',
+              style: TextStyle(fontSize: 18, color: Colors.grey)),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             icon: const Icon(Icons.search),
@@ -137,152 +130,99 @@ class _MyCartScreenState extends State<MyCartScreen> {
   }
 
   Widget _buildCartItem(Map<String, dynamic> item) {
-    final productDataNullable = item['product'] as Map<String, dynamic>?;
-    final quantity = item['quantity'] as int?;
-
-    if (productDataNullable == null || quantity == null) {
+    final productData = item['product'] as Map<String, dynamic>?;
+    final qty = item['quantity'] as int?;
+    if (productData == null || qty == null) {
       return const ListTile(
-        title: Text('Некорректные данные товара'),
         leading: Icon(Icons.error_outline, color: Colors.red),
+        title: Text('Некорректные данные товара'),
       );
     }
-
-    final pd = productDataNullable;
-    final productId = pd['id'] as int?;
-    if (productId == null) {
-      return const ListTile(
-        title: Text('Некорректные данные товара'),
-        leading: Icon(Icons.error_outline, color: Colors.red),
-      );
-    }
-
-    final name = pd['name'] as String? ?? 'Неизвестный продукт';
-    final price = (pd['price'] as num?)?.toDouble() ?? 0.0;
-    final images = (pd['images'] as List).cast<Map<String, dynamic>>();
-    final imageUrl = images.isNotEmpty
+    final id = productData['id'] as int;
+    final name = productData['name'] as String? ?? '';
+    final price = (productData['price'] as num).toDouble();
+    final images = (productData['images'] as List).cast<Map<String, dynamic>>();
+    final imgUrl = images.isNotEmpty
         ? 'http://172.20.10.2:8000${images.first['image_url']}'
         : 'https://via.placeholder.com/150';
 
     return ListTile(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ProductDetailScreen(productId: productId),
-          ),
-        );
-      },
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: id)),
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ProductDetailScreen(productId: productId),
-            ),
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            imageUrl,
-            width: 60,
-            height: 60,
-            fit: BoxFit.cover,
-          ),
-        ),
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(imgUrl, width: 60, height: 60, fit: BoxFit.cover),
       ),
       title: Text(name),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${price.toStringAsFixed(2)} ₸ x $quantity'),
-          Text(
-            'Итого: ${(price * quantity).toStringAsFixed(2)} ₸',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
+          Text('${price.toStringAsFixed(2)} ₸ x $qty'),
+          Text('Итого: ${(price * qty).toStringAsFixed(2)} ₸',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: () => _updateQuantity(productId, quantity - 1),
-              ),
-              Text(quantity.toString()),
+                  icon: const Icon(Icons.remove_circle_outline),
+                  onPressed: () => _updateQuantity(id, qty - 1)),
+              Text(qty.toString()),
               IconButton(
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: () => _updateQuantity(productId, quantity + 1),
-              ),
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: () => _updateQuantity(id, qty + 1)),
             ],
           ),
         ],
       ),
       trailing: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios),
             onPressed: () => _navigateToCheckout([
-              {'product_id': productId, 'quantity': quantity}
+              {'product_id': id, 'quantity': qty}
             ]),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
-            color: Colors.red,
-            onPressed: () => _removeItem(productId),
-          ),
+              icon: const Icon(Icons.delete_outline),
+              color: Colors.red,
+              onPressed: () => _removeItem(id)),
         ],
       ),
     );
   }
 
   Widget _buildTotalSection() {
-    final items = _cartItems.map((item) {
-      final prod = item['product'] as Map<String, dynamic>;
-      return {
-        'product_id': prod['id'] as int,
-        'quantity': item['quantity'] as int
-      };
-    }).toList();
-
+    final items = _cartItems
+        .map((e) => {
+              'product_id': (e['product'] as Map<String, dynamic>)['id'] as int,
+              'quantity': e['quantity'] as int
+            })
+        .toList();
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+          color: Colors.grey[100],
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Общая сумма:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                '${_totalPrice.toStringAsFixed(2)} ₸',
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Общая сумма:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('${_totalPrice.toStringAsFixed(2)} ₸',
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
-              ),
-            ],
-          ),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green)),
+          ]),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Colors.blue,
-              ),
               onPressed: () => _navigateToCheckout(items),
-              child: const Text(
-                'Оформить весь заказ',
-                style: TextStyle(fontSize: 16, color: Colors.white),
-              ),
+              child: const Text('Оформить весь заказ',
+                  style: TextStyle(fontSize: 16)),
             ),
           ),
         ],
