@@ -68,9 +68,19 @@ class OrderService {
       int orderId, String newStatus) async {
     final response = await _dio.put(
       '$_baseUrl/orders/$orderId/status',
-      queryParameters: {'status': newStatus},
+      data: {
+        'status': newStatus, // теперь не query, а тело
+      },
     );
     return response.data as Map<String, dynamic>;
+  }
+
+  Future<List<String>> getOrderStatuses() async {
+    final response = await _dio.get<List<dynamic>>(
+      '$_baseUrl/orders/statuses',
+    );
+    // предполагаем, что API отдаёт ["PENDING","CONFIRMED",…]
+    return response.data!.cast<String>();
   }
 
   /// Для админа/модератора — получить все заказы

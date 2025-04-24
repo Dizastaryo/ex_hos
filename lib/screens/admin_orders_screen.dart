@@ -13,28 +13,27 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
   late final OrderService orderService;
   bool isLoading = true;
   List<dynamic> orders = [];
-
-  static const List<String> _statuses = [
-    'PENDING',
-    'APPROVED',
-    'SHIPPED',
-    'CANCELLED',
-  ];
+  List<String> statuses = [];
 
   @override
   void initState() {
     super.initState();
     orderService = Provider.of<OrderService>(context, listen: false);
-    _fetchAllOrders();
+    _loadData();
   }
 
-  Future<void> _fetchAllOrders() async {
+  Future<void> _loadData() async {
     setState(() => isLoading = true);
     try {
-      orders = await orderService.getAllOrders();
+      final results = await Future.wait([
+        orderService.getAllOrders(),
+        orderService.getOrderStatuses(),
+      ]);
+      orders = results[0] as List<dynamic>;
+      statuses = results[1] as List<String>;
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки: $e')),
+        SnackBar(content: Text('Ошибка загрузки данных: $e')),
       );
     } finally {
       setState(() => isLoading = false);
@@ -84,9 +83,10 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
       await orderService.updateOrderStatus(orderId, newStatus);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Статус заказа #$orderId изменён на $newStatus')),
+          content: Text('Статус заказа #$orderId изменён на $newStatus'),
+        ),
       );
-      _fetchAllOrders();
+      _loadData();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при изменении статуса: $e')),
@@ -107,7 +107,10 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
                   itemBuilder: (_, i) {
                     final order = orders[i] as Map<String, dynamic>;
                     return Card(
-                      margin: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       child: ListTile(
                         title: Text('Заказ #${order['id']}'),
                         subtitle: Text('Статус: ${order['status']}'),
@@ -121,8 +124,10 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
                             PopupMenuButton<String>(
                               icon: const Icon(Icons.edit),
                               onSelected: (status) => _changeOrderStatus(
-                                  order['id'] as int, status),
-                              itemBuilder: (_) => _statuses
+                                order['id'] as int,
+                                status,
+                              ),
+                              itemBuilder: (_) => statuses
                                   .map(
                                     (s) => PopupMenuItem(
                                       value: s,

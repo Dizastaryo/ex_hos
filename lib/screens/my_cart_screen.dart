@@ -1,4 +1,3 @@
-// lib/screens/my_cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/product_service.dart';
@@ -8,7 +7,7 @@ import 'orders_screen.dart';
 import 'product_detail_screen.dart';
 
 class MyCartScreen extends StatefulWidget {
-  const MyCartScreen({super.key});
+  const MyCartScreen({Key? key}) : super(key: key);
 
   @override
   State<MyCartScreen> createState() => _MyCartScreenState();
@@ -40,11 +39,10 @@ class _MyCartScreenState extends State<MyCartScreen> {
         _cartItems = parsedItems;
         _totalPrice = (response['total_price'] as num?)?.toDouble() ?? 0.0;
       });
-    } catch (_) {
-      setState(() {
-        _cartItems = [];
-        _totalPrice = 0.0;
-      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка загрузки корзины: $e')),
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -52,18 +50,81 @@ class _MyCartScreenState extends State<MyCartScreen> {
 
   Future<void> _updateQuantity(int productId, int newQty) async {
     if (newQty < 1) return;
-    await _productService.updateCart(productId, newQty);
-    await _loadCart();
+    setState(() => _isLoading = true);
+    try {
+      await _productService.updateCart(productId, newQty);
+      await _loadCart();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка обновления количества: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _removeItem(int productId) async {
-    await _productService.removeFromCart(productId);
-    await _loadCart();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Удалить товар'),
+        content: const Text('Вы уверены, что хотите удалить товар из корзины?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Удалить')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _productService.removeFromCart(productId);
+      await _loadCart();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления товара: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _clearCart() async {
-    await _productService.clearCart();
-    await _loadCart();
+    if (_cartItems.isEmpty) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Очистить корзину'),
+        content:
+            const Text('Вы уверены, что хотите удалить все товары из корзины?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Очистить')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _productService.clearCart();
+      await _loadCart();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка очистки корзины: $e')),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   void _navigateToCheckout(List<Map<String, int>> items) {
@@ -166,17 +227,20 @@ class _MyCartScreenState extends State<MyCartScreen> {
           Row(
             children: [
               IconButton(
-                  icon: const Icon(Icons.remove_circle_outline),
-                  onPressed: () => _updateQuantity(id, qty - 1)),
+                icon: const Icon(Icons.remove_circle_outline),
+                onPressed: () => _updateQuantity(id, qty - 1),
+              ),
               Text(qty.toString()),
               IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  onPressed: () => _updateQuantity(id, qty + 1)),
+                icon: const Icon(Icons.add_circle_outline),
+                onPressed: () => _updateQuantity(id, qty + 1),
+              ),
             ],
           ),
         ],
       ),
       trailing: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_forward_ios),
@@ -185,9 +249,10 @@ class _MyCartScreenState extends State<MyCartScreen> {
             ]),
           ),
           IconButton(
-              icon: const Icon(Icons.delete_outline),
-              color: Colors.red,
-              onPressed: () => _removeItem(id)),
+            icon: const Icon(Icons.delete_outline),
+            color: Colors.red,
+            onPressed: () => _removeItem(id),
+          ),
         ],
       ),
     );
@@ -203,19 +268,23 @@ class _MyCartScreenState extends State<MyCartScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+        color: Colors.grey[100],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       child: Column(
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            const Text('Общая сумма:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text('${_totalPrice.toStringAsFixed(2)} ₸',
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green)),
-          ]),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Общая сумма:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('${_totalPrice.toStringAsFixed(2)} ₸',
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green)),
+            ],
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
