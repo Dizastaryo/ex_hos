@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import '../models/product.dart';
+import '../models/review.dart';
 
 class ProductService {
   static const _baseUrl = 'http://172.20.10.2:8000';
@@ -122,6 +123,28 @@ class ProductService {
 
   Future<void> clearCart() async {
     await _dio.delete('$_baseUrl/cart/clear');
+  }
+
+  Future<Review> addReview({
+    required int productId,
+    required int rating,
+    String? comment,
+  }) async {
+    final resp = await _dio.post(
+      '$_baseUrl/reviews/',
+      data: {
+        'product_id': productId,
+        'rating': rating,
+        'comment': comment,
+      },
+    );
+    return Review.fromJson(resp.data);
+  }
+
+  /// Получить все отзывы для продукта GET /reviews/product/{productId}
+  Future<List<Review>> getReviewsForProduct(int productId) async {
+    final resp = await _dio.get('$_baseUrl/reviews/product/$productId');
+    return (resp.data as List).map((e) => Review.fromJson(e)).toList();
   }
 
   String _formatError(DioException e) {
