@@ -1,10 +1,10 @@
-// lib/screens/my_cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/product_service.dart';
 import '../services/order_service.dart';
 import 'products_screen.dart';
 import 'orders_screen.dart';
+import 'product_detail_screen.dart';
 
 class MyCartScreen extends StatefulWidget {
   const MyCartScreen({super.key});
@@ -32,9 +32,13 @@ class _MyCartScreenState extends State<MyCartScreen> {
     setState(() => _isLoading = true);
     try {
       final response = await _productService.getCart();
+      // Преобразуем в List<Map<String, dynamic>> корректно
+      final rawItems = response['items'] as List<dynamic>? ?? [];
+      final parsedItems =
+          rawItems.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       setState(() {
-        _cartItems = (response['items'] as List).cast<Map<String, dynamic>>();
-        _totalPrice = (response['total_price'] as num).toDouble();
+        _cartItems = parsedItems;
+        _totalPrice = (response['total_price'] as num?)?.toDouble() ?? 0.0;
       });
     } catch (_) {
       setState(() {
@@ -160,14 +164,32 @@ class _MyCartScreenState extends State<MyCartScreen> {
         : 'https://via.placeholder.com/150';
 
     return ListTile(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailScreen(productId: productId),
+          ),
+        );
+      },
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          imageUrl,
-          width: 60,
-          height: 60,
-          fit: BoxFit.cover,
+      leading: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProductDetailScreen(productId: productId),
+            ),
+          );
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            imageUrl,
+            width: 60,
+            height: 60,
+            fit: BoxFit.cover,
+          ),
         ),
       ),
       title: Text(name),

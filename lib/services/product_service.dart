@@ -5,9 +5,7 @@ import '../models/product.dart';
 class ProductService {
   static const _baseUrl = 'http://172.20.10.2:8000';
   final Dio _dio;
-
   ProductService(this._dio);
-
   Future<Product> addProduct({
     required ProductCreate product,
     required List<File> images,

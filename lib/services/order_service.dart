@@ -67,7 +67,7 @@ class OrderService {
   Future<Map<String, dynamic>> updateOrderStatus(
       int orderId, String newStatus) async {
     final response = await _dio.put(
-      '$_baseUrl/admin/orders/$orderId/status',
+      '$_baseUrl/orders/$orderId/status',
       queryParameters: {'status': newStatus},
     );
     return response.data as Map<String, dynamic>;
@@ -75,7 +75,7 @@ class OrderService {
 
   /// Для админа/модератора — получить все заказы
   Future<List<dynamic>> getAllOrders() async {
-    final response = await _dio.get('$_baseUrl/all');
+    final response = await _dio.get('$_baseUrl/orders/all');
     return response.data as List<dynamic>;
   }
 }

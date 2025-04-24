@@ -46,7 +46,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shop_outlined),
             activeIcon: Icon(Icons.shop),
-            label: 'Заказы',
+            label: 'Пользователи',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt_outlined),
