@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import '../services/admin_service.dart'; // Путь подстрой под свой проект
+import '../services/admin_service.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({Key? key}) : super(key: key);
@@ -63,7 +63,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(response)),
       );
-      _searchUsers(); // Обновить список пользователей
+      _searchUsers();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при блокировке пользователя: $e')),
@@ -77,7 +77,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(response)),
       );
-      _searchUsers(); // Обновить список пользователей
+      _searchUsers();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при разблокировке пользователя: $e')),

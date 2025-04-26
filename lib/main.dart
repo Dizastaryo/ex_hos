@@ -60,26 +60,27 @@ void main() async {
   // AuthProvider
   final authProvider = AuthProvider(dio, cookieJar);
 
-  // Интерцепторы Dio
   dio.interceptors.add(InterceptorsWrapper(
-    onRequest: (options, handler) async {
+    onRequest: (opts, handler) async {
+      // Access-token header
       if (authProvider.token != null) {
-        options.headers['Authorization'] = 'Bearer ${authProvider.token}';
+        opts.headers['Authorization'] = 'Bearer ${authProvider.token}';
       }
-      return handler.next(options);
+      return handler.next(opts);
     },
-    onError: (error, handler) async {
-      if (error.response?.statusCode == 401 &&
-          !error.requestOptions.extra.containsKey('retry')) {
+    onError: (err, handler) async {
+      // on 401 - try refresh
+      if (err.response?.statusCode == 401 &&
+          !err.requestOptions.extra.containsKey('retry')) {
         try {
           await authProvider.refreshToken();
-          error.requestOptions.extra['retry'] = true;
-          return handler.resolve(await dio.fetch(error.requestOptions));
+          err.requestOptions.extra['retry'] = true;
+          return handler.resolve(await dio.fetch(err.requestOptions));
         } catch (_) {
-          return handler.next(error);
+          return handler.next(err);
         }
       }
-      return handler.next(error);
+      return handler.next(err);
     },
   ));
 

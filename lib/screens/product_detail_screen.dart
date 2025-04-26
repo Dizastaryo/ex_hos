@@ -333,33 +333,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: () async {
-                  try {
-                    final orderService =
-                        Provider.of<OrderService>(context, listen: false);
-                    final response = await orderService.createOrder([
-                      {'product_id': product.id, 'quantity': 1}
-                    ], 'Адрес доставки');
-
-                    final orderId = response['id'] as int;
-                    final orderTotal = (response['total'] as num).toDouble();
-
-                    // Переходим на экран OrdersScreen, передав туда items
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OrdersScreen(
-                          items: [
-                            {'product_id': product.id, 'quantity': 1}
-                          ],
-                        ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => OrdersScreen(
+                        items: [
+                          {'product_id': product.id, 'quantity': 1}
+                        ],
                       ),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Ошибка создания заказа: $e')),
-                    );
-                  }
+                    ),
+                  );
                 },
               ),
             ],

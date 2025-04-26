@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import '../services/auth_service.dart';
@@ -8,57 +9,79 @@ class AuthProvider with ChangeNotifier {
   final Dio _dio;
   final CookieJar _cookieJar;
   final AuthService _authService;
+
   bool _isLoading = false;
   dynamic currentUser;
-  String? _token;
+  String? _accessToken;
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio);
 
   bool get isLoading => _isLoading;
-  String? get token => _token;
+  String? get token => _accessToken;
 
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
-  Future<void> _saveCredentials(String login, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('login', login);
-    await prefs.setString('password', password);
+  // Secure storage instance
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
+  // Key in secure storage
+  static const _refreshTokenKey = 'refresh_token';
+
+  // AES encryption settings (32-byte key)
+  final encrypt.Key _encryptionKey =
+      encrypt.Key.fromUtf8('aidyn32lengthsupersecretnooneknows1');
+  final encrypt.IV _iv = encrypt.IV.fromLength(16);
+  late final encrypt.Encrypter _encrypter =
+      encrypt.Encrypter(encrypt.AES(_encryptionKey));
+
+  // Save (encrypt) refresh token
+  Future<void> _saveRefreshToken(String refreshToken) async {
+    final encrypted = _encrypter.encrypt(refreshToken, iv: _iv);
+    await _secureStorage.write(
+      key: _refreshTokenKey,
+      value: encrypted.base64,
+    );
   }
 
-  Future<Map<String, String>?> _loadCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    final login = prefs.getString('login');
-    final password = prefs.getString('password');
-
-    if (login != null && password != null) {
-      return {'login': login, 'password': password};
+  // Load (decrypt) refresh token
+  Future<String?> _loadRefreshToken() async {
+    final encrypted = await _secureStorage.read(key: _refreshTokenKey);
+    if (encrypted == null) return null;
+    try {
+      return _encrypter.decrypt64(encrypted, iv: _iv);
+    } catch (_) {
+      await _secureStorage.delete(key: _refreshTokenKey);
+      return null;
     }
-    return null;
   }
 
-  Future<void> _clearCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    await _cookieJar.deleteAll();
+  // Public getter for decrypted refresh token
+  Future<String?> getRefreshToken() async {
+    return await _loadRefreshToken();
   }
 
+  Future<void> _clearRefreshToken() async {
+    await _secureStorage.delete(key: _refreshTokenKey);
+  }
+
+  /// Perform login: store access & encrypted refresh
   Future<void> login(String login, String password,
       [BuildContext? context]) async {
+    _setLoading(true);
     try {
-      _setLoading(true);
-      final response = await _authService.login(login, password);
-
-      if (response.statusCode == 200) {
-        _token = response.data['accessToken'];
-        currentUser = response.data;
-        await _saveCredentials(login, password);
+      final resp = await _authService.login(login, password);
+      if (resp.statusCode == 200) {
+        final data = resp.data;
+        _accessToken = data['accessToken'];
+        currentUser = data;
+        final rt = data['refreshToken'];
+        if (rt is String) await _saveRefreshToken(rt);
         notifyListeners();
-
-        final roles = List<String>.from(response.data['roles']);
         if (context != null) {
+          final roles = List<String>.from(data['roles']);
           _navigateBasedOnRole(context, roles);
         }
       }
@@ -69,55 +92,69 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  void _navigateBasedOnRole(BuildContext context, List<String> roles) {
-    final route = roles.contains('ROLE_ADMIN')
+  void _navigateBasedOnRole(BuildContext ctx, List<String> roles) {
+    final r = roles.contains('ROLE_ADMIN')
         ? '/admin-home'
         : roles.contains('ROLE_MODERATOR')
             ? '/moderator-home'
             : '/main';
-
-    Navigator.pushReplacementNamed(context, route);
+    Navigator.pushReplacementNamed(ctx, r);
   }
 
-  Future<void> autoLogin(BuildContext context) async {
-    final credentials = await _loadCredentials();
-    if (credentials != null) {
-      await login(credentials['login']!, credentials['password']!, context);
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.pushReplacementNamed(context, '/auth');
-      });
+  Future<void> autoLogin(BuildContext ctx) async {
+    final rt = await _loadRefreshToken();
+    if (rt != null) {
+      try {
+        await refreshToken();
+        if (currentUser != null && currentUser['roles'] != null) {
+          final roles = List<String>.from(currentUser['roles']);
+          _navigateBasedOnRole(ctx, roles);
+          return;
+        }
+      } catch (_) {}
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushReplacementNamed(ctx, '/auth');
+    });
   }
 
-  Future<void> logout(BuildContext context) async {
-    try {
-      // Просто очищаем данные и переходим на экран авторизации
-      await _clearCredentials();
-      _token = null;
-      currentUser = null;
-      notifyListeners();
-
-      // Переход в экран авторизации
-      Navigator.pushReplacementNamed(context, '/auth');
-    } catch (e) {
-      throw Exception('Logout error: $e');
-    }
+  Future<void> logout(BuildContext ctx) async {
+    await _clearRefreshToken();
+    await _cookieJar.deleteAll();
+    _accessToken = null;
+    currentUser = null;
+    notifyListeners();
+    Navigator.pushReplacementNamed(ctx, '/auth');
   }
 
+  /// Refresh access token using decrypted refresh-token via cookie header
   Future<void> refreshToken() async {
+    final rt = await _loadRefreshToken();
+    if (rt == null) throw Exception('No refresh token found');
     try {
-      final response = await _dio.post('/auth/refresh');
-      if (response.statusCode == 200) {
-        _token = response.data['accessToken'];
+      final resp = await _dio.post(
+        '/auth/refresh',
+        options: Options(headers: {
+          // send refresh token via Cookie header
+          'Cookie': 'refreshToken=$rt',
+        }),
+      );
+      if (resp.statusCode == 200) {
+        final data = resp.data;
+        _accessToken = data['accessToken'];
+        currentUser = data;
+        final newRt = data['refreshToken'];
+        if (newRt is String) await _saveRefreshToken(newRt);
         notifyListeners();
+      } else {
+        throw Exception('Refresh failed: ${resp.statusCode}');
       }
     } catch (e) {
-      throw Exception('Token refresh failed: $e');
+      throw Exception('Token refresh error: $e');
     }
   }
 
-  // Восстановление пароля
+  // Password reset flows proxying to AuthService
   Future<void> requestPasswordReset(String login) async {
     await _authService.requestPasswordReset(login);
   }
@@ -127,7 +164,7 @@ class AuthProvider with ChangeNotifier {
     await _authService.confirmPasswordReset(login, otp, newPassword);
   }
 
-  // Прокси к AuthService
+  // Other AuthService proxies
   Future<void> sendEmailOtp(String email) => _authService.sendEmailOtp(email);
   Future<void> verifyEmailOtp(String email, String otp) =>
       _authService.verifyEmailOtp(email, otp);
