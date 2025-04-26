@@ -1,4 +1,3 @@
-// lib/screens/payment_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/order_service.dart';
@@ -6,7 +5,7 @@ import 'payment_status_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final int orderId;
-  final double orderTotal; // <-- передаём сюда сумму из OrderRead
+  final double orderTotal;
   const PaymentScreen({required this.orderId, required this.orderTotal});
 
   @override

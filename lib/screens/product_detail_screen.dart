@@ -4,7 +4,7 @@ import '../models/product.dart';
 import '../models/review.dart';
 import '../services/product_service.dart';
 import '../services/order_service.dart';
-import 'payment_screen.dart';
+import 'orders_screen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final int productId;
@@ -326,12 +326,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ElevatedButton(
                 child: const Text('Купить', style: TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
                 onPressed: () async {
                   try {
                     final orderService =
@@ -339,17 +340,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     final response = await orderService.createOrder([
                       {'product_id': product.id, 'quantity': 1}
                     ], 'Адрес доставки');
-                    final total = (response['total'] as num).toDouble();
+
+                    final orderId = response['id'] as int;
+                    final orderTotal = (response['total'] as num).toDouble();
+
+                    // Переходим на экран OrdersScreen, передав туда items
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PaymentScreen(
-                            orderId: response['id'] as int, orderTotal: total),
+                        builder: (_) => OrdersScreen(
+                          items: [
+                            {'product_id': product.id, 'quantity': 1}
+                          ],
+                        ),
                       ),
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка создания заказа: $e')));
+                      SnackBar(content: Text('Ошибка создания заказа: $e')),
+                    );
                   }
                 },
               ),

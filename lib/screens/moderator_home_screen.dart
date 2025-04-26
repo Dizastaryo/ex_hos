@@ -25,7 +25,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
       appBar: AppBar(
         title: const Text('Панель модератора'),
         centerTitle: true,
-        backgroundColor: Colors.green,
+        backgroundColor: Color(0xFF6A0DAD),
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
@@ -33,7 +33,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentPage,
-        selectedItemColor: Colors.green,
+        selectedItemColor: Color(0xFF6A0DAD),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
@@ -54,7 +54,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
             label: 'Управление',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.account_circle_outlined), // Современная иконка
+            icon: Icon(Icons.account_circle_outlined),
             activeIcon: Icon(Icons.account_circle),
             label: 'Профил',
           ),

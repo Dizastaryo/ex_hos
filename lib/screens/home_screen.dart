@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'products_screen.dart'; // Экран "О компании"
-import 'profile_screen.dart'; // Экран профиля
-import 'my_cart_screen.dart'; // Экран "Мои аренды"
-import 'notifications_screen.dart'; // Экран уведомлений
-import 'my_orders_screen.dart'; // Экран "Мои аренды"
+import 'products_screen.dart';
+import 'profile_screen.dart';
+import 'my_cart_screen.dart';
+import 'notifications_screen.dart';
+import 'my_orders_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,67 +12,65 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  var _currentPage = 0;
+  int _currentPage = 0;
   final List<Widget> _pages = [
-    ProductsScreen(),
-    MyCartScreen(),
-    MyOrdersScreen(),
+    const ProductsScreen(),
+    const MyCartScreen(),
+    const MyOrdersScreen(),
     ProfileScreen(),
   ];
+
+  static const Color primaryColor = Color(0xFF6A0DAD);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
+        backgroundColor: primaryColor,
+        elevation: 4,
         centerTitle: true,
-        automaticallyImplyLeading: false, // Убираем стрелку назад на главной
+        automaticallyImplyLeading: false,
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: Colors.white, // Белый фон для круга
                 shape: BoxShape.circle,
+                image: DecorationImage(
+                  image: AssetImage('assets/logo.png'),
+                  fit: BoxFit.cover,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.grey.withOpacity(0.2),
-                    spreadRadius: 2,
-                    blurRadius: 5,
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 6,
+                    offset: Offset(0, 3),
                   ),
                 ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/logo.png',
-                    height: 40, // Увеличиваем высоту для лучшего масштаба
-                    width: 40, // Указываем ширину для круглой формы
-                    fit: BoxFit.cover, // Логотип будет заполнять круг
-                  ),
-                ),
-              ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             const Text(
               'Aidyn Market',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Colors.black,
+                color: Colors.white,
                 fontSize: 20,
+                letterSpacing: 1.1,
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.black),
+            icon: const Icon(Icons.notifications_outlined, color: Colors.white),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const NotificationsScreen(),
+                  builder: (_) => const NotificationsScreen(),
                 ),
               );
             },
@@ -84,40 +82,35 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _pages[_currentPage],
       ),
       bottomNavigationBar: BottomNavigationBar(
-        items: [
+        backgroundColor: Colors.white,
+        currentIndex: _currentPage,
+        selectedItemColor: primaryColor,
+        unselectedItemColor: Colors.grey[600],
+        showUnselectedLabels: true,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) => setState(() => _currentPage = index),
+        items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined), // Современная иконка
-            activeIcon: Icon(Icons.dashboard), // Активная версия
-            label: 'Главная',
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
+            label: 'Продукты',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_outlined), // Современная иконка
-            activeIcon: Icon(Icons.assignment), // Активная версия
+            icon: Icon(Icons.shopping_cart_outlined),
+            activeIcon: Icon(Icons.shopping_cart),
             label: 'Корзина',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_outlined), // Современная иконка
-            activeIcon: Icon(Icons.assignment), // Активная версия
-            label: 'Мой заказы',
+            icon: Icon(Icons.receipt_long_outlined),
+            activeIcon: Icon(Icons.receipt_long),
+            label: 'Мои заказы',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.account_circle_outlined), // Современная иконка
-            activeIcon: Icon(Icons.account_circle), // Активная версия
+            icon: Icon(Icons.account_circle_outlined),
+            activeIcon: Icon(Icons.account_circle),
             label: 'Профиль',
           ),
         ],
-        currentIndex: _currentPage,
-        selectedItemColor:
-            const Color.fromARGB(255, 34, 146, 34), // Цвет активной иконки
-        unselectedItemColor:
-            const Color.fromARGB(255, 65, 65, 65), // Цвет неактивных иконок
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          setState(() {
-            _currentPage = index;
-          });
-        },
       ),
     );
   }

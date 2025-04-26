@@ -59,19 +59,35 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Сброс пароля')),
+      appBar: AppBar(
+        title: const Text('Сброс пароля'),
+        backgroundColor: const Color(0xFF6A0DAD),
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
         child: Form(
           key: _formKey,
           child: ListView(
             children: [
-              const SizedBox(height: 20),
+              const Text(
+                'Введите свои данные для сброса пароля',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF6A0DAD),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
               TextFormField(
                 controller: _loginController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Email или Телефон',
-                  prefixIcon: Icon(Icons.person),
+                  prefixIcon: Icon(Icons.person, color: Color(0xFF6A0DAD)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(color: Color(0xFF6A0DAD)),
+                  ),
                 ),
                 validator: (value) {
                   if (value?.isEmpty ?? true) {
@@ -84,9 +100,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _otpController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Код подтверждения',
-                    prefixIcon: Icon(Icons.lock_clock),
+                    prefixIcon:
+                        Icon(Icons.lock_clock, color: Color(0xFF6A0DAD)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: Color(0xFF6A0DAD)),
+                    ),
                   ),
                   validator: (value) =>
                       value?.isEmpty ?? true ? 'Введите код' : null,
@@ -97,15 +118,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   obscureText: !_isPasswordVisible,
                   decoration: InputDecoration(
                     labelText: 'Новый пароль',
-                    prefixIcon: const Icon(Icons.lock),
+                    prefixIcon:
+                        const Icon(Icons.lock, color: Color(0xFF6A0DAD)),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _isPasswordVisible
                             ? Icons.visibility
                             : Icons.visibility_off,
+                        color: Color(0xFF6A0DAD),
                       ),
                       onPressed: () => setState(
                           () => _isPasswordVisible = !_isPasswordVisible),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: Color(0xFF6A0DAD)),
                     ),
                   ),
                   validator: (value) {
@@ -128,10 +155,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       onPressed: _isLoading ? null : _handlePasswordReset,
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(50),
-                        backgroundColor: Theme.of(context).primaryColor,
+                        backgroundColor: const Color(0xFF6A0DAD),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
                       ),
                       child: Text(
                         _isOtpSent ? 'Сменить пароль' : 'Получить код',
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
             ],

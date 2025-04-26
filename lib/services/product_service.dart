@@ -28,13 +28,14 @@ class ProductService {
     }
   }
 
-  Future<List<Product>> getProducts({String? category, String? search}) async {
+  /// Получить список продуктов с опциональным фильтром по категории и поиском по имени
+  Future<List<Product>> getProducts({int? categoryId, String? search}) async {
     try {
       final response = await _dio.get(
         '$_baseUrl/products/',
         queryParameters: {
-          if (category != null) 'category': category,
-          if (search != null) 'search': search,
+          if (categoryId != null) 'category_id': categoryId,
+          if (search != null && search.isNotEmpty) 'search': search,
         },
       );
 

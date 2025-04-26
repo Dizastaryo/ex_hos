@@ -5,20 +5,18 @@ import '../providers/auth_provider.dart';
 class SecondScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Calling autoLogin method when the screen is built
     Future.delayed(Duration.zero, () {
       context.read<AuthProvider>().autoLogin(context);
     });
 
     return Scaffold(
-      backgroundColor: Colors.white, // Red background
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(""),
-        backgroundColor: Colors.white, // Match the background color with AppBar
+        backgroundColor: Colors.white,
       ),
       body: Center(
-        child:
-            CircularProgressIndicator(), // Show loading indicator while auto login
+        child: CircularProgressIndicator(),
       ),
     );
   }

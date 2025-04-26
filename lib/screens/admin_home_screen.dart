@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'about_screen.dart';
-import 'admin_orders_screen.dart';
 import 'profile_screen.dart';
+import 'admin_management_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({Key? key}) : super(key: key);
@@ -14,7 +14,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentPage = 0;
 
   final List<Widget> _pages = [
-    AdminOrdersScreen(),
+    UserManagementScreen(),
     AboutScreen(),
     ProfileScreen(),
   ];
@@ -25,7 +25,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       appBar: AppBar(
         title: const Text('Панель администратора'),
         centerTitle: true,
-        backgroundColor: Colors.blue,
+        backgroundColor: Color(0xFF6A0DAD),
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
@@ -33,7 +33,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentPage,
-        selectedItemColor: Colors.blue,
+        selectedItemColor: Color(0xFF6A0DAD),
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
@@ -44,8 +44,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.shop_outlined),
-            activeIcon: Icon(Icons.shop),
+            icon: Icon(Icons.list_alt_outlined),
+            activeIcon: Icon(Icons.list_alt),
             label: 'Пользователи',
           ),
           BottomNavigationBarItem(

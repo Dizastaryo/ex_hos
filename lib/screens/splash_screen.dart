@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'second_screen.dart'; // Второй экран
+import 'second_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -29,7 +29,6 @@ class _SplashScreenState extends State<SplashScreen>
     _logoAnimation =
         CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack);
 
-    // Анимация текста (прозрачность)
     _textController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -37,10 +36,7 @@ class _SplashScreenState extends State<SplashScreen>
     _textAnimation =
         CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
-    // Запуск анимаций по очереди
     _logoController.forward().then((_) => _textController.forward());
-
-    // Переход на следующий экран
     Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -59,7 +55,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF6A0DAD), // Фиолетовый фон
+      backgroundColor: const Color(0xFF6A0DAD),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

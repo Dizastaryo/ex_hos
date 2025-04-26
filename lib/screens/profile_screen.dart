@@ -10,7 +10,7 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Color(0xFF6C9942),
+        backgroundColor: Color(0xFF6A0DAD), // основной цвет
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -19,8 +19,7 @@ class ProfileScreen extends StatelessWidget {
             fontWeight: FontWeight.bold,
             fontSize: 22,
             color: Colors.white,
-            letterSpacing:
-                1.2, // Добавим немного расстояния между буквами для лучшей читаемости
+            letterSpacing: 1.2,
           ),
         ),
       ),
@@ -36,7 +35,6 @@ class ProfileScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Аватар
                   CircleAvatar(
                     radius: 50,
                     backgroundColor: Colors.green.shade100,
@@ -49,7 +47,6 @@ class ProfileScreen extends StatelessWidget {
                         : null,
                   ),
                   const SizedBox(height: 16),
-                  // Email пользователя
                   Text(
                     currentUser['email'] ?? 'Email не указан',
                     style: const TextStyle(
@@ -66,39 +63,35 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Политика конфиденциальности
                   ListTile(
                     leading: Icon(Icons.privacy_tip_outlined,
-                        color: Colors.green.shade700),
+                        color: Color(0xFF6A0DAD)), // основной цвет
                     title: Text(
                       'Политика конфиденциальности',
                       style: TextStyle(fontSize: 16, color: Colors.black),
                     ),
                     trailing: Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
-                      // Реализуйте логику перехода на экран с текстом политики.
                       Navigator.pushNamed(context, '/privacy_policy');
                     },
                   ),
                   const Divider(),
-                  // Пользовательское соглашение
                   ListTile(
                     leading: Icon(Icons.gavel_outlined,
-                        color: Colors.green.shade700),
+                        color: Color(0xFF6A0DAD)), // основной цвет
                     title: Text(
                       'Пользовательское соглашение',
                       style: TextStyle(fontSize: 16, color: Colors.black),
                     ),
                     trailing: Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
-                      // Реализуйте логику перехода на экран с текстом соглашения.
                       Navigator.pushNamed(context, '/user_agreement');
                     },
                   ),
                   const Divider(),
                   ListTile(
-                    leading:
-                        Icon(Icons.support_agent, color: Colors.green.shade700),
+                    leading: Icon(Icons.support_agent,
+                        color: Color(0xFF6A0DAD)), // основной цвет
                     title: Text(
                       'Связаться с нами',
                       style: TextStyle(fontSize: 16, color: Colors.black),
@@ -110,21 +103,18 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(),
                   const SizedBox(height: 20),
-                  // Кнопка выхода
                   ElevatedButton.icon(
                     onPressed: () async {
                       await authProvider.logout(context);
-                      // Перенаправляем пользователя на страницу регистрации
                       Navigator.pushReplacementNamed(context, '/auth');
                     },
                     icon: const Icon(Icons.logout, color: Colors.white),
                     label: const Text(
                       'Выйти из аккаунта',
-                      style: TextStyle(
-                          color: Colors.white), // Указываем цвет текста
+                      style: TextStyle(color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C9942),
+                      backgroundColor: Color(0xFF6A0DAD), // основной цвет
                       padding: const EdgeInsets.symmetric(
                           horizontal: 30, vertical: 15),
                       shape: RoundedRectangleBorder(
