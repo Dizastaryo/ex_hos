@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../services/admin_service.dart';
 import '../models/user_dto.dart';
+import '../services/request_logger.dart'; // <--- добавил
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({Key? key}) : super(key: key);
@@ -86,11 +87,48 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     }
   }
 
+  void _showRequestLogs() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Отправленные запросы'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: RequestLogger.logs.reversed
+                .map((log) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        log,
+                        style: const TextStyle(
+                            fontSize: 12, fontFamily: 'Courier'),
+                      ),
+                    ))
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Управление пользователями'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list),
+            onPressed: _showRequestLogs, // <--- добавил кнопку
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -149,11 +187,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: Icon(Icons.block),
+                        icon: const Icon(Icons.block),
                         onPressed: () => _blockUser(user.id),
                       ),
                       IconButton(
-                        icon: Icon(Icons.lock_open),
+                        icon: const Icon(Icons.lock_open),
                         onPressed: () => _unblockUser(user.id),
                       ),
                     ],

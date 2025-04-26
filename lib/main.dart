@@ -36,6 +36,8 @@ import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
 import 'services/admin_service.dart';
 
+import 'services/request_logger.dart'; // <--- добавил
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -62,6 +64,9 @@ void main() async {
 
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (opts, handler) async {
+      // Логируем запрос
+      RequestLogger.addLog(opts); // <--- добавил
+
       // Access-token header
       if (authProvider.token != null) {
         opts.headers['Authorization'] = 'Bearer ${authProvider.token}';
