@@ -34,6 +34,7 @@ import 'screens/admin_home_screen.dart';
 import 'screens/moderator_home_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
+import 'services/admin_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +90,7 @@ void main() async {
         Provider<CookieJar>.value(value: cookieJar),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
         Provider<ProductService>(create: (_) => ProductService(dio)),
+        Provider<UserService>(create: (_) => UserService(dio)),
         Provider<CategoryService>(create: (_) => CategoryService(dio)),
         Provider<OrderService>(create: (_) => OrderService(dio)),
       ],

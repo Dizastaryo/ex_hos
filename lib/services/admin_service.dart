@@ -16,61 +16,71 @@ class UserDTO {
 
 class UserService {
   final Dio _dio;
+  static const _baseUrl = 'http://172.20.10.2:8081/api/test/users';
 
   UserService(this._dio);
-  
+
+  /// Создать модератора
   Future<String> createModerator({
     required String username,
     required String email,
     required String password,
   }) async {
-    final response = await _dio.post(
-      'http://172.20.10.2:8081/api/test/users/create-moderator',
-      data: {
-        "username": username,
-        "email": email,
-        "password": password,
-      },
-    );
-    return response
-        .data; // "Moderator created successfully!" или сообщение об ошибке
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/create-moderator',
+        data: {
+          "username": username,
+          "email": email,
+          "password": password,
+        },
+      );
+      return response.data as String; // Предполагается строка в ответе
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
+    }
   }
 
+  /// Поиск пользователей
   Future<List<UserDTO>> searchUsers(String query) async {
-    final response = await _dio.get(
-      'http://172.20.10.2:8081/api/test/users/search',
-      queryParameters: {
-        'query': query,
-      },
-    );
-    return (response.data as List)
-        .map((json) => UserDTO.fromJson(json))
-        .toList();
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/search',
+        queryParameters: {
+          'query': query,
+        },
+      );
+      return (response.data as List)
+          .map((json) => UserDTO.fromJson(json))
+          .toList();
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
+    }
   }
 
-  // Метод для блокировки пользователя
+  /// Блокировка пользователя
   Future<String> blockUser(int userId) async {
     try {
-      final response = await _dio.put(
-        'http://172.20.10.2:8081/api/test/users/block/$userId',
-      );
-      return response
-          .data; // "User blocked successfully!" или сообщение об ошибке
-    } catch (e) {
-      return "Error blocking user: $e";
+      final response = await _dio.put('$_baseUrl/block/$userId');
+      return response.data as String;
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
     }
   }
 
-  // Метод для разблокировки пользователя
+  /// Разблокировка пользователя
   Future<String> unblockUser(int userId) async {
     try {
-      final response = await _dio.put(
-        'http://172.20.10.2:8081/api/test/users/unblock/$userId',
-      );
-      return response
-          .data; // "User unblocked successfully!" или сообщение об ошибке
-    } catch (e) {
-      return "Error unblocking user: $e";
+      final response = await _dio.put('$_baseUrl/unblock/$userId');
+      return response.data as String;
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
     }
+  }
+
+  String _formatError(DioException e) {
+    return e.response != null
+        ? 'Ошибка ${e.response?.statusCode}: ${e.response?.data}'
+        : 'Сетевая ошибка: ${e.message}';
   }
 }
