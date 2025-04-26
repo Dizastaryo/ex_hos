@@ -35,7 +35,7 @@ class UserService {
           "password": password,
         },
       );
-      return response.data as String; // Предполагается строка в ответе
+      return response.data as String;
     } on DioException catch (e) {
       throw Exception(_formatError(e));
     }
@@ -79,8 +79,15 @@ class UserService {
   }
 
   String _formatError(DioException e) {
-    return e.response != null
-        ? 'Ошибка ${e.response?.statusCode}: ${e.response?.data}'
-        : 'Сетевая ошибка: ${e.message}';
+    if (e.response != null) {
+      final statusCode = e.response?.statusCode;
+      final data = e.response?.data;
+      if (statusCode == 401) {
+        return 'Ошибка авторизации (401). Пожалуйста, перезайдите.';
+      }
+      return 'Ошибка $statusCode: $data';
+    } else {
+      return 'Сетевая ошибка: ${e.message}';
+    }
   }
 }
