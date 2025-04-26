@@ -1,18 +1,5 @@
 import 'package:dio/dio.dart';
-
-class UserDTO {
-  final int id;
-  final String username;
-
-  UserDTO({required this.id, required this.username});
-
-  factory UserDTO.fromJson(Map<String, dynamic> json) {
-    return UserDTO(
-      id: json['id'],
-      username: json['username'],
-    );
-  }
-}
+import '../models/user_dto.dart'; // Импортируем новый файл
 
 class UserService {
   final Dio _dio;
