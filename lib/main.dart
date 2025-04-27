@@ -39,8 +39,22 @@ import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
 import 'services/admin_service.dart';
 
+/// Глобальное переопределение HttpClient для принятия самоподписанных сертификатов
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
+    return client;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Применяем глобальное переопределение для HttpClient
+  HttpOverrides.global = MyHttpOverrides();
 
   // Инициализация уведомлений и фоновых задач
   await _initNotifications();
@@ -56,11 +70,11 @@ void main() async {
   final dio = Dio();
   final directory = await getApplicationDocumentsDirectory();
   final cookieJar = PersistCookieJar(
-    storage: FileStorage("${directory.path}/.cookies/"),
+    storage: FileStorage('${directory.path}/.cookies/'),
   );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Настройка игнорирования SSL ошибок
+  // Переопределяем HttpClient для Dio, чтобы игнорировать ошибки SSL
   dio.httpClientAdapter = IOHttpClientAdapter(
     createHttpClient: () {
       final client = HttpClient();
@@ -70,7 +84,7 @@ void main() async {
     },
   );
 
-  // AuthProvider
+  // Провайдер аутентификации
   final authProvider = AuthProvider(dio, cookieJar);
 
   // Интерсептор для добавления Access-token
@@ -81,7 +95,7 @@ void main() async {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
-        return handler.next(options);
+        handler.next(options);
       },
       onError: (err, handler) async {
         if (err.response?.statusCode == 401 &&
@@ -90,12 +104,13 @@ void main() async {
             await authProvider.refreshToken();
             err.requestOptions.extra['retry'] = true;
             final clonedReq = await dio.fetch(err.requestOptions);
-            return handler.resolve(clonedReq);
+            handler.resolve(clonedReq);
           } catch (_) {
-            return handler.next(err);
+            handler.next(err);
           }
+        } else {
+          handler.next(err);
         }
-        return handler.next(err);
       },
     ),
   );
