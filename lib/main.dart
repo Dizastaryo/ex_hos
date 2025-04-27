@@ -36,8 +36,6 @@ import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
 import 'services/admin_service.dart';
 
-import 'services/request_logger.dart'; // <--- добавил
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -62,32 +60,32 @@ void main() async {
   // AuthProvider
   final authProvider = AuthProvider(dio, cookieJar);
 
-  dio.interceptors.add(InterceptorsWrapper(
-    onRequest: (opts, handler) async {
-      // Логируем запрос
-      RequestLogger.addLog(opts); // <--- добавил
-
-      // Access-token header
-      if (authProvider.token != null) {
-        opts.headers['Authorization'] = 'Bearer ${authProvider.token}';
-      }
-      return handler.next(opts);
-    },
-    onError: (err, handler) async {
-      // on 401 - try refresh
-      if (err.response?.statusCode == 401 &&
-          !err.requestOptions.extra.containsKey('retry')) {
-        try {
-          await authProvider.refreshToken();
-          err.requestOptions.extra['retry'] = true;
-          return handler.resolve(await dio.fetch(err.requestOptions));
-        } catch (_) {
-          return handler.next(err);
+  // Интерсептор для добавления Access-token
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        final token = authProvider.token;
+        if (token != null) {
+          options.headers['Authorization'] = 'Bearer $token';
         }
-      }
-      return handler.next(err);
-    },
-  ));
+        return handler.next(options);
+      },
+      onError: (err, handler) async {
+        if (err.response?.statusCode == 401 &&
+            !err.requestOptions.extra.containsKey('retry')) {
+          try {
+            await authProvider.refreshToken();
+            err.requestOptions.extra['retry'] = true;
+            final clonedReq = await dio.fetch(err.requestOptions);
+            return handler.resolve(clonedReq);
+          } catch (_) {
+            return handler.next(err);
+          }
+        }
+        return handler.next(err);
+      },
+    ),
+  );
 
   runApp(
     MultiProvider(
