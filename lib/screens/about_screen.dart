@@ -132,7 +132,7 @@ class _AboutScreenState extends State<AboutScreen> {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Ошибка загрузки: \${snapshot.error}'));
+            return Center(child: Text('Ошибка загрузки: ${snapshot.error}'));
           }
 
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -210,7 +210,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '\${product.price.toStringAsFixed(2)} ₸',
+                    '${product.price.toStringAsFixed(2)} ₸',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ],

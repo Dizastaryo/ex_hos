@@ -41,7 +41,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка загрузки корзины: \$e')),
+        SnackBar(content: Text('Ошибка загрузки корзины: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -56,7 +56,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления количества: \$e')),
+        SnackBar(content: Text('Ошибка обновления количества: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -87,7 +87,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка удаления товара: \$e')),
+        SnackBar(content: Text('Ошибка удаления товара: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -120,7 +120,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
       await _loadCart();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка очистки корзины: \$e')),
+        SnackBar(content: Text('Ошибка очистки корзины: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -236,8 +236,8 @@ class _MyCartScreenState extends State<MyCartScreen> {
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('\${price.toStringAsFixed(2)} ₸ x \$qty'),
-                    Text('Итого: \${(price * qty).toStringAsFixed(2)} ₸',
+                    Text('${price.toStringAsFixed(2)} ₸ x $qty'),
+                    Text('Итого: ${(price * qty).toStringAsFixed(2)} ₸',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Row(
@@ -303,7 +303,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
             children: [
               const Text('Общая сумма:',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text('\${_totalPrice.toStringAsFixed(2)} ₸',
+              Text('${_totalPrice.toStringAsFixed(2)} ₸',
                   style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
