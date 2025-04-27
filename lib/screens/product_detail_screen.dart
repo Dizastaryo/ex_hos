@@ -273,7 +273,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(32), bottomRight: Radius.circular(32)),
         child: Image.network(
-          'http://172.20.10.2:8000${product.imageUrls[index]}',
+          'https://172.20.10.2:8000${product.imageUrls[index]}',
           fit: BoxFit.cover,
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;

@@ -8,7 +8,7 @@ class CategoryService {
   CategoryService(this._dio);
 
   Future<List<Category>> getCategories() async {
-    final response = await _dio.get('http://172.20.10.2:8000/categories/');
+    final response = await _dio.get('https://172.20.10.2:8000/categories/');
     return (response.data as List)
         .map((json) => Category.fromJson(json))
         .toList();

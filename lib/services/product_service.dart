@@ -4,7 +4,7 @@ import '../models/product.dart';
 import '../models/review.dart';
 
 class ProductService {
-  static const _baseUrl = 'http://172.20.10.2:8000';
+  static const _baseUrl = 'https://172.20.10.2:8000';
   final Dio _dio;
   ProductService(this._dio);
   Future<Product> addProduct({

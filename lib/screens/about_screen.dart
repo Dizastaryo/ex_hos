@@ -182,7 +182,7 @@ class _AboutScreenState extends State<AboutScreen> {
                     const BorderRadius.vertical(top: Radius.circular(12)),
                 child: Image.network(
                   product.imageUrls.isNotEmpty
-                      ? 'http://172.20.10.2:8000${product.imageUrls.first}'
+                      ? 'https://172.20.10.2:8000${product.imageUrls.first}'
                       : 'https://via.placeholder.com/150',
                   width: double.infinity,
                   fit: BoxFit.cover,
