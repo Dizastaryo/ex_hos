@@ -132,7 +132,7 @@ class _AboutScreenState extends State<AboutScreen> {
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Ошибка загрузки: ${snapshot.error}'));
+            return Center(child: Text('Ошибка загрузки: \${snapshot.error}'));
           }
 
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -166,6 +166,11 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Widget _buildProductCard(Product product) {
+    final productService = Provider.of<ProductService>(context, listen: false);
+    final imgUrl = product.imageUrls.isNotEmpty
+        ? productService.getImageUrl(product.imageUrls.first)
+        : 'https://via.placeholder.com/150';
+
     return GestureDetector(
       onTap: () => _showProductOptions(context, product),
       child: Card(
@@ -181,9 +186,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(12)),
                 child: Image.network(
-                  product.imageUrls.isNotEmpty
-                      ? 'https://172.20.10.2:8000${product.imageUrls.first}'
-                      : 'https://via.placeholder.com/150',
+                  imgUrl,
                   width: double.infinity,
                   fit: BoxFit.cover,
                   errorBuilder: (ctx, error, stackTrace) =>
@@ -207,7 +210,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${product.price.toStringAsFixed(2)} ₸',
+                    '\${product.price.toStringAsFixed(2)} ₸',
                     style: const TextStyle(fontSize: 14),
                   ),
                 ],

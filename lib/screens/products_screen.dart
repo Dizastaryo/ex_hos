@@ -52,6 +52,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final productService = Provider.of<ProductService>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Продукты'),
@@ -129,8 +131,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     itemBuilder: (context, index) {
                       final product = products[index];
                       final imageUrl = product.imageUrls.isNotEmpty
-                          ? 'http://172.20.10.2:8000${product.imageUrls.first}'
+                          ? productService.getImageUrl(product.imageUrls.first)
                           : 'https://via.placeholder.com/150';
+
                       return GestureDetector(
                         onTap: () {
                           Navigator.push(

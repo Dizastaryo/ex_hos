@@ -201,8 +201,11 @@ class _MyCartScreenState extends State<MyCartScreen> {
     final name = productData['name'] as String? ?? '';
     final price = (productData['price'] as num).toDouble();
     final images = (productData['images'] as List).cast<Map<String, dynamic>>();
+
+    // Используем getImageUrl из ProductService
+    final productService = Provider.of<ProductService>(context, listen: false);
     final imgUrl = images.isNotEmpty
-        ? 'http://172.20.10.2:8000${images.first['image_url']}'
+        ? productService.getImageUrl(images.first['image_url'] as String)
         : 'https://via.placeholder.com/150';
 
     return Card(
@@ -233,8 +236,8 @@ class _MyCartScreenState extends State<MyCartScreen> {
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('${price.toStringAsFixed(2)} ₸ x $qty'),
-                    Text('Итого: ${(price * qty).toStringAsFixed(2)} ₸',
+                    Text('\${price.toStringAsFixed(2)} ₸ x \$qty'),
+                    Text('Итого: \${(price * qty).toStringAsFixed(2)} ₸',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Row(
@@ -300,7 +303,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
             children: [
               const Text('Общая сумма:',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              Text('${_totalPrice.toStringAsFixed(2)} ₸',
+              Text('\${_totalPrice.toStringAsFixed(2)} ₸',
                   style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,

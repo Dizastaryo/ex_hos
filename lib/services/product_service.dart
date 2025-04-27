@@ -148,6 +148,10 @@ class ProductService {
     return (resp.data as List).map((e) => Review.fromJson(e)).toList();
   }
 
+  String getImageUrl(String imagePath) {
+    return '$_baseUrl$imagePath';
+  }
+
   String _formatError(DioException e) {
     return e.response != null
         ? 'Ошибка ${e.response?.statusCode}: ${e.response?.data}'

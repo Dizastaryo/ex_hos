@@ -267,18 +267,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (product.imageUrls.isEmpty) {
       return const Center(child: Text('Нет изображений'));
     }
+
+    final productService = Provider.of<ProductService>(context, listen: false);
+
     return PageView.builder(
       itemCount: product.imageUrls.length,
       itemBuilder: (context, index) => ClipRRect(
         borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(32), bottomRight: Radius.circular(32)),
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
+        ),
         child: Image.network(
-          'https://172.20.10.2:8000${product.imageUrls[index]}',
+          productService.getImageUrl(product.imageUrls[index]),
           fit: BoxFit.cover,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return const Center(child: CircularProgressIndicator());
-          },
+          width: double.infinity,
         ),
       ),
     );
