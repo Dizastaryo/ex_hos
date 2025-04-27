@@ -2,13 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
-class SecondScreen extends StatelessWidget {
+class SecondScreen extends StatefulWidget {
+  @override
+  _SecondScreenState createState() => _SecondScreenState();
+}
+
+class _SecondScreenState extends State<SecondScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _tryAutoLogin();
+  }
+
+  Future<void> _tryAutoLogin() async {
+    await context.read<AuthProvider>().autoLogin(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    Future.delayed(Duration.zero, () {
-      context.read<AuthProvider>().autoLogin(context);
-    });
-
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
