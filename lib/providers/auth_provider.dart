@@ -31,14 +31,22 @@ class AuthProvider with ChangeNotifier {
 
   // Шифрование текста
   String _encryptText(String text) {
-    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-    return encrypter.encrypt(text, iv: _iv).base64;
+    try {
+      final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+      return encrypter.encrypt(text, iv: _iv).base64;
+    } catch (e) {
+      throw Exception('Encryption error: $e');
+    }
   }
 
   // Дешифрование текста
   String _decryptText(String encryptedText) {
-    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-    return encrypter.decrypt64(encryptedText, iv: _iv);
+    try {
+      final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+      return encrypter.decrypt64(encryptedText, iv: _iv);
+    } catch (e) {
+      throw Exception('Decryption error: $e');
+    }
   }
 
   Future<void> _saveCredentials(String login, String password) async {
