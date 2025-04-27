@@ -18,10 +18,11 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get token => _token;
 
-  // Ключ для шифрования (для демонстрации, в реальной ситуации его лучше хранить безопасно)
+  // Ключ для шифрования (32 байта = 256 бит)
   final _encryptionKey = encrypt.Key.fromUtf8(
-      '32charslongencryptionkey32charslongencryptionkey'); // 32 байта
-  final _iv = encrypt.IV.fromLength(16); // Инициализационный вектор
+      '32charslongencryptionkey32charslongencryptionkey'); // 32 байта = 256 бит
+  final _iv =
+      encrypt.IV.fromLength(16); // Инициализационный вектор длиной 16 байт
 
   void _setLoading(bool value) {
     _isLoading = value;
