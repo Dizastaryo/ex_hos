@@ -18,54 +18,44 @@ class AuthProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get token => _token;
 
-  // Ключ для шифрования (32 байта = 256 бит)
-  final _encryptionKey = encrypt.Key.fromUtf8(
-      '32charslongencryptionkey32charslongencryptionkey'); // 32 байта = 256 бит
-  final _iv =
-      encrypt.IV.fromLength(16); // Инициализационный вектор длиной 16 байт
+  // ВАЖНО: ровно 32 символа = 256 бит
+  final _encryptionKey =
+      encrypt.Key.fromUtf8('my32charlongsecretkey1234567890!' // 32 chars
+          );
+  final _iv = encrypt.IV.fromLength(16); // 16 байт = 128 бит
 
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
-  // Шифрование текста
+  // Шифрование
   String _encryptText(String text) {
-    try {
-      final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-      return encrypter.encrypt(text, iv: _iv).base64;
-    } catch (e) {
-      throw Exception('Encryption error: $e');
-    }
+    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+    return encrypter.encrypt(text, iv: _iv).base64;
   }
 
-  // Дешифрование текста
+  // Дешифрование
   String _decryptText(String encryptedText) {
-    try {
-      final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-      return encrypter.decrypt64(encryptedText, iv: _iv);
-    } catch (e) {
-      throw Exception('Decryption error: $e');
-    }
+    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
+    return encrypter.decrypt64(encryptedText, iv: _iv);
   }
 
   Future<void> _saveCredentials(String login, String password) async {
     final prefs = await SharedPreferences.getInstance();
-    String encryptedLogin = _encryptText(login);
-    String encryptedPassword = _encryptText(password);
-    await prefs.setString('login', encryptedLogin);
-    await prefs.setString('password', encryptedPassword);
+    await prefs.setString('login', _encryptText(login));
+    await prefs.setString('password', _encryptText(password));
   }
 
   Future<Map<String, String>?> _loadCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    final encryptedLogin = prefs.getString('login');
-    final encryptedPassword = prefs.getString('password');
-
-    if (encryptedLogin != null && encryptedPassword != null) {
-      String login = _decryptText(encryptedLogin);
-      String password = _decryptText(encryptedPassword);
-      return {'login': login, 'password': password};
+    final eLogin = prefs.getString('login');
+    final ePass = prefs.getString('password');
+    if (eLogin != null && ePass != null) {
+      return {
+        'login': _decryptText(eLogin),
+        'password': _decryptText(ePass),
+      };
     }
     return null;
   }
@@ -77,9 +67,8 @@ class AuthProvider with ChangeNotifier {
   }
 
   String? getDecryptedLogin() {
-    if (currentUser != null) {
-      final encryptedLogin = currentUser['login'];
-      return encryptedLogin != null ? _decryptText(encryptedLogin) : null;
+    if (currentUser != null && currentUser['login'] != null) {
+      return _decryptText(currentUser['login']);
     }
     return null;
   }
@@ -89,15 +78,13 @@ class AuthProvider with ChangeNotifier {
     try {
       _setLoading(true);
       final response = await _authService.login(login, password);
-
       if (response.statusCode == 200) {
         _token = response.data['accessToken'];
         currentUser = response.data;
         await _saveCredentials(login, password);
         notifyListeners();
-
-        final roles = List<String>.from(response.data['roles']);
         if (context != null) {
+          final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
         }
       }
@@ -114,14 +101,13 @@ class AuthProvider with ChangeNotifier {
         : roles.contains('ROLE_MODERATOR')
             ? '/moderator-home'
             : '/main';
-
     Navigator.pushReplacementNamed(context, route);
   }
 
   Future<void> autoLogin(BuildContext context) async {
-    final credentials = await _loadCredentials();
-    if (credentials != null) {
-      await login(credentials['login']!, credentials['password']!, context);
+    final creds = await _loadCredentials();
+    if (creds != null) {
+      await login(creds['login']!, creds['password']!, context);
     } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Navigator.pushReplacementNamed(context, '/auth');
@@ -130,40 +116,28 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> logout(BuildContext context) async {
-    try {
-      await _clearCredentials();
-      _token = null;
-      currentUser = null;
-      notifyListeners();
-      Navigator.pushReplacementNamed(context, '/auth');
-    } catch (e) {
-      throw Exception('Logout error: $e');
-    }
+    await _clearCredentials();
+    _token = null;
+    currentUser = null;
+    notifyListeners();
+    Navigator.pushReplacementNamed(context, '/auth');
   }
 
   Future<void> refreshToken() async {
-    try {
-      final response = await _dio.post('/auth/refresh');
-      if (response.statusCode == 200) {
-        _token = response.data['accessToken'];
-        notifyListeners();
-      }
-    } catch (e) {
-      throw Exception('Token refresh failed: $e');
+    final response = await _dio.post('/auth/refresh');
+    if (response.statusCode == 200) {
+      _token = response.data['accessToken'];
+      notifyListeners();
     }
   }
 
-  // Восстановление пароля
-  Future<void> requestPasswordReset(String login) async {
-    await _authService.requestPasswordReset(login);
-  }
+  Future<void> requestPasswordReset(String login) =>
+      _authService.requestPasswordReset(login);
 
   Future<void> confirmPasswordReset(
-      String login, String otp, String newPassword) async {
-    await _authService.confirmPasswordReset(login, otp, newPassword);
-  }
+          String login, String otp, String newPassword) =>
+      _authService.confirmPasswordReset(login, otp, newPassword);
 
-  // Прокси к AuthService
   Future<void> sendEmailOtp(String email) => _authService.sendEmailOtp(email);
   Future<void> verifyEmailOtp(String email, String otp) =>
       _authService.verifyEmailOtp(email, otp);
