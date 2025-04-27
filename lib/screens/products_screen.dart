@@ -54,7 +54,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Товары'),
+        title: const Text('Продукты'),
         backgroundColor: const Color(0xFF6A0DAD),
       ),
       body: Column(

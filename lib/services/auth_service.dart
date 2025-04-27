@@ -8,7 +8,7 @@ class AuthService {
   // Отправка OTP на email
   Future<void> sendEmailOtp(String email) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/send-otp',
+      'https://172.20.10.2:8443/api/auth/send-otp', // Используем HTTPS
       data: {'email': email},
     );
   }
@@ -16,7 +16,7 @@ class AuthService {
   // Проверка OTP для email
   Future<void> verifyEmailOtp(String email, String otp) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/verify-otp',
+      'https://172.20.10.2:8443/api/auth/verify-otp', // Используем HTTPS
       data: {'email': email, 'otp': otp},
     );
   }
@@ -24,7 +24,7 @@ class AuthService {
   // Отправка OTP на телефон
   Future<void> sendSmsOtp(String phone) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/send-sms-otp',
+      'https://172.20.10.2:8443/api/auth/send-sms-otp', // Используем HTTPS
       data: {'phoneNumber': phone},
     );
   }
@@ -32,7 +32,7 @@ class AuthService {
   // Проверка OTP по телефону
   Future<void> verifySmsOtp(String phone, String otp) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/verify-sms-otp',
+      'https://172.20.10.2:8443/api/auth/verify-sms-otp', // Используем HTTPS
       data: {'phoneNumber': phone, 'otp': otp},
     );
   }
@@ -41,7 +41,7 @@ class AuthService {
   Future<void> registerWithEmail(
       String username, String email, String password, String otp) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/signup',
+      'https://172.20.10.2:8443/api/auth/signup', // Используем HTTPS
       data: {
         'username': username,
         'email': email,
@@ -56,7 +56,7 @@ class AuthService {
   Future<void> registerWithPhone(
       String username, String phone, String password, String otp) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/signup-phone',
+      'https://172.20.10.2:8443/api/auth/signup-phone', // Используем HTTPS
       data: {
         'username': username,
         'phoneNumber': phone,
@@ -70,7 +70,7 @@ class AuthService {
   // Вход
   Future<Response> login(String login, String password) async {
     return await dio.post(
-      'http://172.20.10.2:8081/api/auth/signin',
+      'https://172.20.10.2:8443/api/auth/signin', // Используем HTTPS
       data: {'login': login, 'password': password},
     );
   }
@@ -78,7 +78,7 @@ class AuthService {
   // Обновление access токена
   Future<Response> refreshToken() async {
     return await dio.post(
-      'http://172.20.10.2:8081/api/auth/refresh',
+      'https://172.20.10.2:8443/api/auth/refresh', // Используем HTTPS
       options: Options(
         headers: {'Content-Type': 'application/json'},
         extra: {'withCredentials': true}, // важно для отправки куки
@@ -89,7 +89,7 @@ class AuthService {
   // Выход
   Future<void> logout() async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/logout',
+      'https://172.20.10.2:8443/api/auth/logout', // Используем HTTPS
       options: Options(
         headers: {'Content-Type': 'application/json'},
         extra: {'withCredentials': true},
@@ -100,7 +100,7 @@ class AuthService {
   // Запрос на сброс пароля
   Future<void> requestPasswordReset(String login) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/reset-password/request',
+      'https://172.20.10.2:8443/api/auth/reset-password/request', // Используем HTTPS
       data: {'login': login},
     );
   }
@@ -109,7 +109,7 @@ class AuthService {
   Future<void> confirmPasswordReset(
       String login, String otp, String newPassword) async {
     await dio.post(
-      'http://172.20.10.2:8081/api/auth/reset-password/confirm',
+      'https://172.20.10.2:8443/api/auth/reset-password/confirm', // Используем HTTPS
       data: {
         'login': login,
         'otp': otp,

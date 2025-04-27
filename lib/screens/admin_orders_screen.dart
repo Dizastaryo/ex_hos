@@ -64,7 +64,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Text('Итог: \$${order['total']}'),
+              Text('Итог: ${order['total']}₸'),
             ],
           ),
         ),

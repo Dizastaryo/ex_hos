@@ -3,7 +3,7 @@ import '../models/user_dto.dart'; // Импортируем новый файл
 
 class UserService {
   final Dio _dio;
-  static const _baseUrl = 'http://172.20.10.2:8081/api/test/users';
+  static const _baseUrl = 'https://172.20.10.2:8443/api/test/users';
 
   UserService(this._dio);
 
