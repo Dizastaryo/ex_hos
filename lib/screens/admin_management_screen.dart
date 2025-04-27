@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import '../services/admin_service.dart';
 import '../models/user_dto.dart';
 import '../services/request_logger.dart'; // <--- добавил
+import 'package:provider/provider.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({Key? key}) : super(key: key);
@@ -23,7 +23,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   @override
   void initState() {
     super.initState();
-    userService = UserService(Dio());
+    userService = Provider.of<UserService>(context, listen: false);
   }
 
   Future<void> _createModerator() async {
