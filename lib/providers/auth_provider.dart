@@ -2,15 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:dio/dio.dart';
+import 'package:cookie_jar/cookie_jar.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+
 import '../services/auth_service.dart';
+
 class AuthProvider with ChangeNotifier {
   final Dio _dio;
   final AuthService _authService;
 
+  final PersistCookieJar _cookieJar;
+
   bool _isLoading = false;
   String? _accessToken;
 
-  AuthProvider(this._dio) : _authService = AuthService(_dio);
+  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio);
 
   bool get isLoading => _isLoading;
   String? get token => _accessToken;
