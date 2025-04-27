@@ -84,7 +84,7 @@ class _AuthScreenState extends State<AuthScreen>
               _codeSent = false;
             }),
             child: Text(
-              mode == RegistrationMode.email ? 'Email' : 'Phone',
+              mode == RegistrationMode.email ? 'Емайл' : 'Номер',
               style: TextStyle(
                 color: selected ? Colors.white : Colors.deepPurple,
                 fontWeight: FontWeight.bold,
@@ -127,17 +127,17 @@ class _AuthScreenState extends State<AuthScreen>
           if (!_codeSent) ...[
             if (_regMode == RegistrationMode.email)
               _buildText(
-                'Email',
+                'Емайл',
                 Icons.email,
                 _emailCtrl,
                 (v) => v!.isEmpty ? 'Введите email' : null,
               ),
             if (_regMode == RegistrationMode.phone)
               _buildText(
-                'Phone',
+                'Номер',
                 Icons.phone,
                 _phoneCtrl,
-                (v) => v!.isEmpty ? 'Введите телефон' : null,
+                (v) => v!.isEmpty ? 'Введите номер телефона' : null,
               ),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -166,26 +166,26 @@ class _AuthScreenState extends State<AuthScreen>
                   }
                 }
               },
-              child: const Text('Send OTP'),
+              child: const Text('Отправить код'),
             ),
           ],
           if (_codeSent) ...[
             _buildText(
-              'Enter OTP',
+              'Введите код',
               Icons.sms,
               _otpCtrl,
-              (v) => v!.isEmpty ? 'Введите OTP' : null,
+              (v) => v!.isEmpty ? 'Введите код' : null,
             ),
             const SizedBox(height: 16),
             _buildText(
-              'Username',
+              'Логин',
               Icons.person,
               _usernameCtrl,
-              (v) => v!.isEmpty ? 'Введите username' : null,
+              (v) => v!.isEmpty ? 'Введите логин' : null,
             ),
             const SizedBox(height: 16),
             _buildText(
-              'Password',
+              'Пароль',
               Icons.lock,
               _passCtrl,
               (v) => v!.length < 6 ? 'Минимум 6 символов' : null,
@@ -235,7 +235,7 @@ class _AuthScreenState extends State<AuthScreen>
                   }
                 }
               },
-              child: const Text('Complete Registration'),
+              child: const Text('Завершить регистрацию'),
             ),
           ],
         ],
@@ -251,7 +251,7 @@ class _AuthScreenState extends State<AuthScreen>
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         children: [
           _buildText(
-            'Email/Username/Phone',
+            'Емайл или номер или логин',
             Icons.person,
             _loginCtrl,
             (v) => v!.isEmpty ? 'Введите логин' : null,
