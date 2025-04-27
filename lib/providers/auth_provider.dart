@@ -2,19 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:dio/dio.dart';
-import 'package:cookie_jar/cookie_jar.dart';
 import '../services/auth_service.dart';
-
 class AuthProvider with ChangeNotifier {
   final Dio _dio;
-  final CookieJar _cookieJar;
   final AuthService _authService;
 
   bool _isLoading = false;
-  dynamic currentUser;
   String? _accessToken;
 
-  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio);
+  AuthProvider(this._dio) : _authService = AuthService(_dio);
 
   bool get isLoading => _isLoading;
   String? get token => _accessToken;
@@ -26,13 +22,11 @@ class AuthProvider with ChangeNotifier {
 
   // Secure storage instance
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-
-  // Key in secure storage
   static const _refreshTokenKey = 'refresh_token';
 
   // AES encryption settings (32-byte key)
   final encrypt.Key _encryptionKey =
-      encrypt.Key.fromUtf8('aidyn32lengthsupersecretnooneknows1');
+      encrypt.Key.fromUtf8('aidyn32lengthsupersecretnoonekno');
   final encrypt.IV _iv = encrypt.IV.fromLength(16);
   late final encrypt.Encrypter _encrypter =
       encrypt.Encrypter(encrypt.AES(_encryptionKey));
@@ -40,10 +34,7 @@ class AuthProvider with ChangeNotifier {
   // Save (encrypt) refresh token
   Future<void> _saveRefreshToken(String refreshToken) async {
     final encrypted = _encrypter.encrypt(refreshToken, iv: _iv);
-    await _secureStorage.write(
-      key: _refreshTokenKey,
-      value: encrypted.base64,
-    );
+    await _secureStorage.write(key: _refreshTokenKey, value: encrypted.base64);
   }
 
   // Load (decrypt) refresh token
@@ -58,32 +49,23 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Public getter for decrypted refresh token
-  Future<String?> getRefreshToken() async {
-    return await _loadRefreshToken();
-  }
-
   Future<void> _clearRefreshToken() async {
     await _secureStorage.delete(key: _refreshTokenKey);
   }
 
-  /// Perform login: store access & encrypted refresh
-  Future<void> login(String login, String password,
-      [BuildContext? context]) async {
+  /// Perform login: store tokens and navigate to main screen
+  Future<void> login(
+      String login, String password, BuildContext context) async {
     _setLoading(true);
     try {
       final resp = await _authService.login(login, password);
       if (resp.statusCode == 200) {
         final data = resp.data;
         _accessToken = data['accessToken'];
-        currentUser = data;
         final rt = data['refreshToken'];
         if (rt is String) await _saveRefreshToken(rt);
         notifyListeners();
-        if (context != null) {
-          final roles = List<String>.from(data['roles']);
-          _navigateBasedOnRole(context, roles);
-        }
+        Navigator.pushReplacementNamed(context, '/main');
       }
     } catch (e) {
       throw Exception('Login error: $e');
@@ -92,57 +74,20 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  void _navigateBasedOnRole(BuildContext ctx, List<String> roles) {
-    final r = roles.contains('ROLE_ADMIN')
-        ? '/admin-home'
-        : roles.contains('ROLE_MODERATOR')
-            ? '/moderator-home'
-            : '/main';
-    Navigator.pushReplacementNamed(ctx, r);
-  }
-
-  Future<void> autoLogin(BuildContext ctx) async {
-    final rt = await _loadRefreshToken();
-    if (rt != null) {
-      try {
-        await refreshToken();
-        if (currentUser != null && currentUser['roles'] != null) {
-          final roles = List<String>.from(currentUser['roles']);
-          _navigateBasedOnRole(ctx, roles);
-          return;
-        }
-      } catch (_) {}
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushReplacementNamed(ctx, '/auth');
-    });
-  }
-
-  Future<void> logout(BuildContext ctx) async {
-    await _clearRefreshToken();
-    await _cookieJar.deleteAll();
-    _accessToken = null;
-    currentUser = null;
-    notifyListeners();
-    Navigator.pushReplacementNamed(ctx, '/auth');
-  }
-
-  /// Refresh access token using decrypted refresh-token via cookie header
+  /// Refresh access token
   Future<void> refreshToken() async {
     final rt = await _loadRefreshToken();
     if (rt == null) throw Exception('No refresh token found');
     try {
       final resp = await _dio.post(
         '/auth/refresh',
-        options: Options(headers: {
-          // send refresh token via Cookie header
-          'Cookie': 'refreshToken=$rt',
-        }),
+        options: Options(
+          headers: {'Cookie': 'refreshToken=$rt'},
+        ),
       );
       if (resp.statusCode == 200) {
         final data = resp.data;
         _accessToken = data['accessToken'];
-        currentUser = data;
         final newRt = data['refreshToken'];
         if (newRt is String) await _saveRefreshToken(newRt);
         notifyListeners();
@@ -154,7 +99,32 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Password reset flows proxying to AuthService
+  /// Attempt auto-login: refresh token and navigate accordingly
+  Future<void> autoLogin(BuildContext context) async {
+    _setLoading(true);
+    final rt = await _loadRefreshToken();
+    if (rt != null) {
+      try {
+        await refreshToken();
+        Navigator.pushReplacementNamed(context, '/main');
+        return;
+      } catch (_) {}
+    }
+    await _clearRefreshToken();
+    _accessToken = null;
+    notifyListeners();
+    Navigator.pushReplacementNamed(context, '/auth');
+    _setLoading(false);
+  }
+
+  Future<void> logout(BuildContext context) async {
+    await _clearRefreshToken();
+    _accessToken = null;
+    notifyListeners();
+    Navigator.pushReplacementNamed(context, '/auth');
+  }
+
+  // Proxy for password reset
   Future<void> requestPasswordReset(String login) async {
     await _authService.requestPasswordReset(login);
   }
@@ -164,7 +134,7 @@ class AuthProvider with ChangeNotifier {
     await _authService.confirmPasswordReset(login, otp, newPassword);
   }
 
-  // Other AuthService proxies
+  // Proxy other AuthService methods
   Future<void> sendEmailOtp(String email) => _authService.sendEmailOtp(email);
   Future<void> verifyEmailOtp(String email, String otp) =>
       _authService.verifyEmailOtp(email, otp);
