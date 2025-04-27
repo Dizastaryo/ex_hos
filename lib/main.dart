@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'dart:io'; // Для использования HttpClient и X509Certificate
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path_provider/path_provider.dart';
+
 // Providers
 import 'providers/auth_provider.dart';
 
@@ -56,6 +59,16 @@ void main() async {
     storage: FileStorage("${directory.path}/.cookies/"),
   );
   dio.interceptors.add(CookieManager(cookieJar));
+
+  // Настройка игнорирования SSL ошибок
+  dio.httpClientAdapter = IOHttpClientAdapter(
+    createHttpClient: () {
+      final client = HttpClient();
+      client.badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+      return client;
+    },
+  );
 
   // AuthProvider
   final authProvider = AuthProvider(dio, cookieJar);

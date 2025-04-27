@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   http: ^1.2.2
-  dio: ^5.0.0         # Версия Dio
+  dio: ^5.8.0+1       # Версия Dio
   dio_cookie_manager: ^2.0.1 # Пакет для работы с cookie в Dio
   cookie_jar: ^3.0.0  
   video_player: ^2.9.2
