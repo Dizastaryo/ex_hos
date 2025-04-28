@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import '../services/auth_service.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'dart:io';
 
 class AuthProvider with ChangeNotifier {
   final Dio _dio;
@@ -13,64 +15,64 @@ class AuthProvider with ChangeNotifier {
   dynamic currentUser;
   String? _token;
 
-  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio);
+  // здесь указываем базовый URI вашего API, чтобы cookieJar знал, куда сохранять/загружать куки:
+  final Uri _baseUri = Uri.parse('https://172.20.10.2:8443');
+
+  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
+    // обязательно подключаем CookieManager к Dio, чтобы куки приходили в _cookieJar
+    _dio.interceptors.add(CookieManager(_cookieJar));
+  }
 
   bool get isLoading => _isLoading;
   String? get token => _token;
 
-  // ВАЖНО: ровно 32 символа = 256 бит
+  // ключ и IV для шифрования
   final _encryptionKey =
-      encrypt.Key.fromUtf8('my32charlongsecretkey1234567890!' // 32 chars
-          );
-  final _iv = encrypt.IV.fromLength(16); // 16 байт = 128 бит
+      encrypt.Key.fromUtf8('my32charlongsecretkey1234567890!');
+  final _iv = encrypt.IV.fromLength(16);
 
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
-  // Шифрование
   String _encryptText(String text) {
-    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-    return encrypter.encrypt(text, iv: _iv).base64;
+    return encrypt.Encrypter(encrypt.AES(_encryptionKey))
+        .encrypt(text, iv: _iv)
+        .base64;
   }
 
-  // Дешифрование
   String _decryptText(String encryptedText) {
-    final encrypter = encrypt.Encrypter(encrypt.AES(_encryptionKey));
-    return encrypter.decrypt64(encryptedText, iv: _iv);
+    return encrypt.Encrypter(encrypt.AES(_encryptionKey))
+        .decrypt64(encryptedText, iv: _iv);
   }
 
-  Future<void> _saveCredentials(String login, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('login', _encryptText(login));
-    await prefs.setString('password', _encryptText(password));
+  Future<void> _saveRefreshToken() async {
+    // достаём куку refreshToken из jar
+    final cookies = await _cookieJar.loadForRequest(_baseUri);
+    final cookie = cookies.firstWhere(
+      (c) => c.name == 'refreshToken',
+      orElse: () => Cookie('', ''),
+    );
+    if (cookie.value.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('refreshToken', _encryptText(cookie.value));
+    }
   }
 
-  Future<Map<String, String>?> _loadCredentials() async {
+  Future<String?> _loadRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final eLogin = prefs.getString('login');
-    final ePass = prefs.getString('password');
-    if (eLogin != null && ePass != null) {
-      return {
-        'login': _decryptText(eLogin),
-        'password': _decryptText(ePass),
-      };
+    final enc = prefs.getString('refreshToken');
+    if (enc != null) {
+      return _decryptText(enc);
     }
     return null;
   }
 
-  Future<void> _clearCredentials() async {
+  Future<void> _clearRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('refreshToken');
     await _cookieJar.deleteAll();
-  }
-
-  String? getDecryptedLogin() {
-    if (currentUser != null && currentUser['login'] != null) {
-      return _decryptText(currentUser['login']);
-    }
-    return null;
   }
 
   Future<void> login(String login, String password,
@@ -81,8 +83,10 @@ class AuthProvider with ChangeNotifier {
       if (response.statusCode == 200) {
         _token = response.data['accessToken'];
         currentUser = response.data;
-        await _saveCredentials(login, password);
+
+        await _saveRefreshToken();
         notifyListeners();
+
         if (context != null) {
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
@@ -95,6 +99,82 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<void> silentAutoLogin() async {
+    final stored = await _loadRefreshToken();
+    if (stored != null) {
+      try {
+        _setLoading(true);
+
+        await _cookieJar.saveFromResponse(
+          _baseUri,
+          [Cookie('refreshToken', stored)],
+        );
+
+        final response = await _authService.refreshToken();
+        if (response.statusCode == 200) {
+          _token = response.data['accessToken'];
+          currentUser = response.data;
+
+          await _saveRefreshToken();
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('silentAutoLogin error: $e');
+        rethrow;
+      } finally {
+        _setLoading(false);
+      }
+    } else {
+      throw Exception('No stored refreshToken');
+    }
+  }
+
+  Future<void> autoLogin(BuildContext context) async {
+    final stored = await _loadRefreshToken();
+    if (stored != null) {
+      try {
+        _setLoading(true);
+
+        // вручную кладём refresh-токен в jar, чтобы он ушёл в запросе
+        await _cookieJar.saveFromResponse(
+          _baseUri,
+          [Cookie('refreshToken', stored)],
+        );
+
+        final response = await _authService.refreshToken();
+        if (response.statusCode == 200) {
+          _token = response.data['accessToken'];
+          currentUser = response.data;
+
+          // сохраняем новый refresh-токен из куки
+          await _saveRefreshToken();
+
+          notifyListeners();
+          final roles = List<String>.from(response.data['roles']);
+          _navigateBasedOnRole(context, roles);
+          return;
+        }
+      } catch (e) {
+        debugPrint('autoLogin refresh error: $e');
+      } finally {
+        _setLoading(false);
+      }
+    }
+
+    // если не авторизовались — на экран аутентификации
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushReplacementNamed(context, '/auth');
+    });
+  }
+
+  Future<void> logout(BuildContext context) async {
+    await _clearRefreshToken();
+    _token = null;
+    currentUser = null;
+    notifyListeners();
+    Navigator.pushReplacementNamed(context, '/auth');
+  }
+
   void _navigateBasedOnRole(BuildContext context, List<String> roles) {
     final route = roles.contains('ROLE_ADMIN')
         ? '/admin-home'
@@ -104,30 +184,24 @@ class AuthProvider with ChangeNotifier {
     Navigator.pushReplacementNamed(context, route);
   }
 
-  Future<void> autoLogin(BuildContext context) async {
-    final creds = await _loadCredentials();
-    if (creds != null) {
-      await login(creds['login']!, creds['password']!, context);
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.pushReplacementNamed(context, '/auth');
-      });
-    }
-  }
-
-  Future<void> logout(BuildContext context) async {
-    await _clearCredentials();
-    _token = null;
-    currentUser = null;
-    notifyListeners();
-    Navigator.pushReplacementNamed(context, '/auth');
-  }
-
   Future<void> refreshToken() async {
-    final response = await _dio.post('/auth/refresh');
-    if (response.statusCode == 200) {
-      _token = response.data['accessToken'];
-      notifyListeners();
+    // Этот метод теперь используется только внутри autoLogin()
+    try {
+      _setLoading(true);
+      final response = await _authService.refreshToken();
+      if (response.statusCode == 200) {
+        _token = response.data['accessToken'];
+        currentUser = response.data;
+        await _saveRefreshToken();
+        notifyListeners();
+      } else {
+        throw Exception('Не удалось обновить токен: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('refreshToken error: $e');
+      rethrow;
+    } finally {
+      _setLoading(false);
     }
   }
 

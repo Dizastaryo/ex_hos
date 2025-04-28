@@ -7,8 +7,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final currentUser = authProvider.currentUser;
-    final decryptedLogin =
-        authProvider.getDecryptedLogin(); // Дешифрованный логин
+    final login = authProvider.currentUser['login'];
 
     return Scaffold(
       appBar: AppBar(
@@ -50,7 +49,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    decryptedLogin ?? 'Логин не указан',
+                    login ?? 'Логин не указан',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
