@@ -13,7 +13,6 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   dynamic currentUser;
   String? _token;
-
   final Uri _baseUri = Uri.parse('https://172.20.10.2:8443');
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
@@ -29,6 +28,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _saveRefreshToken() async {
+    // достаём куку refreshToken из jar
     final cookies = await _cookieJar.loadForRequest(_baseUri);
     final cookie = cookies.firstWhere(
       (c) => c.name == 'refreshToken',
@@ -36,26 +36,20 @@ class AuthProvider with ChangeNotifier {
     );
     if (cookie.value.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
+      // Сохраняем токен без шифрования
       await prefs.setString('refreshToken', cookie.value);
-
-      debugPrint('Refresh token saved: ${cookie.value}');
-    } else {
-      debugPrint('No refresh token found to save');
     }
   }
 
   Future<String?> _loadRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final storedToken = prefs.getString('refreshToken');
-    debugPrint('Loaded refresh token: $storedToken');
-    return storedToken;
+    return prefs.getString('refreshToken');
   }
 
   Future<void> _clearRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('refreshToken');
     await _cookieJar.deleteAll();
-    debugPrint('Refresh token cleared');
   }
 
   Future<void> login(String login, String password,
@@ -74,15 +68,12 @@ class AuthProvider with ChangeNotifier {
         await _saveRefreshToken();
         notifyListeners();
 
-        debugPrint('Login successful. Token: ${_token}');
-
         if (context != null) {
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
         }
       }
     } catch (e) {
-      debugPrint('Login error: $e');
       throw Exception('Login error: $e');
     } finally {
       _setLoading(false);
@@ -111,7 +102,6 @@ class AuthProvider with ChangeNotifier {
 
           await _saveRefreshToken();
           notifyListeners();
-          debugPrint('Silent login successful, new token: $_token');
         }
       } catch (e) {
         debugPrint('silentAutoLogin error: $e');
@@ -120,7 +110,6 @@ class AuthProvider with ChangeNotifier {
         _setLoading(false);
       }
     } else {
-      debugPrint('No stored refresh token for silent login');
       throw Exception('No stored refreshToken');
     }
   }
@@ -149,19 +138,19 @@ class AuthProvider with ChangeNotifier {
           notifyListeners();
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
-          debugPrint('Auto-login successful. New token: $_token');
+          return;
         }
       } catch (e) {
         debugPrint('autoLogin refresh error: $e');
       } finally {
         _setLoading(false);
       }
-    } else {
-      debugPrint('No stored refresh token for auto login');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.pushReplacementNamed(context, '/auth');
-      });
     }
+
+    // если не авторизовались — на экран аутентификации
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.pushReplacementNamed(context, '/auth');
+    });
   }
 
   Future<void> logout(BuildContext context) async {
@@ -170,7 +159,6 @@ class AuthProvider with ChangeNotifier {
     currentUser = null;
     notifyListeners();
     Navigator.pushReplacementNamed(context, '/auth');
-    debugPrint('Logged out successfully');
   }
 
   void _navigateBasedOnRole(BuildContext context, List<String> roles) {
@@ -180,10 +168,10 @@ class AuthProvider with ChangeNotifier {
             ? '/moderator-home'
             : '/main';
     Navigator.pushReplacementNamed(context, route);
-    debugPrint('Navigating to role-based route: $route');
   }
 
   Future<void> refreshToken() async {
+    // Этот метод теперь используется только внутри autoLogin()
     try {
       _setLoading(true);
       final response = await _authService.refreshToken();
@@ -196,10 +184,8 @@ class AuthProvider with ChangeNotifier {
         };
         await _saveRefreshToken();
         notifyListeners();
-        debugPrint('Token refreshed successfully. New token: $_token');
       } else {
-        debugPrint('Failed to refresh token: ${response.statusCode}');
-        throw Exception('Failed to refresh token');
+        throw Exception('Не удалось обновить токен: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('refreshToken error: $e');
