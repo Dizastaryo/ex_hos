@@ -7,7 +7,10 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final currentUser = authProvider.currentUser;
-    final login = authProvider.currentUser['login'];
+
+    // Извлекаем только username и email из currentUser
+    final username = currentUser != null ? currentUser['username'] : null;
+    final email = currentUser != null ? currentUser['email'] : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -36,20 +39,9 @@ class ProfileScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.green.shade100,
-                    backgroundImage: currentUser['avatarUrl'] != null
-                        ? NetworkImage(currentUser['avatarUrl'])
-                        : null,
-                    child: currentUser['avatarUrl'] == null
-                        ? const Icon(Icons.person,
-                            size: 50, color: Colors.white)
-                        : null,
-                  ),
                   const SizedBox(height: 16),
                   Text(
-                    login ?? 'Логин не указан',
+                    username ?? 'Логин не указан',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -65,7 +57,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    currentUser['email'] ?? 'Email не указан',
+                    email ?? 'Email не указан',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,

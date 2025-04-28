@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import '../services/auth_service.dart';
-import 'package:encrypt/encrypt.dart' as encrypt;
 import 'dart:io';
 
 class AuthProvider with ChangeNotifier {
@@ -15,40 +14,21 @@ class AuthProvider with ChangeNotifier {
   dynamic currentUser;
   String? _token;
 
-  // здесь указываем базовый URI вашего API, чтобы cookieJar знал, куда сохранять/загружать куки:
   final Uri _baseUri = Uri.parse('https://172.20.10.2:8443');
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
-    // обязательно подключаем CookieManager к Dio, чтобы куки приходили в _cookieJar
     _dio.interceptors.add(CookieManager(_cookieJar));
   }
 
   bool get isLoading => _isLoading;
   String? get token => _token;
 
-  // ключ и IV для шифрования
-  final _encryptionKey =
-      encrypt.Key.fromUtf8('my32charlongsecretkey1234567890!');
-  final _iv = encrypt.IV.fromLength(16);
-
   void _setLoading(bool value) {
     _isLoading = value;
     notifyListeners();
   }
 
-  String _encryptText(String text) {
-    return encrypt.Encrypter(encrypt.AES(_encryptionKey))
-        .encrypt(text, iv: _iv)
-        .base64;
-  }
-
-  String _decryptText(String encryptedText) {
-    return encrypt.Encrypter(encrypt.AES(_encryptionKey))
-        .decrypt64(encryptedText, iv: _iv);
-  }
-
   Future<void> _saveRefreshToken() async {
-    // достаём куку refreshToken из jar
     final cookies = await _cookieJar.loadForRequest(_baseUri);
     final cookie = cookies.firstWhere(
       (c) => c.name == 'refreshToken',
@@ -56,23 +36,26 @@ class AuthProvider with ChangeNotifier {
     );
     if (cookie.value.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('refreshToken', _encryptText(cookie.value));
+      await prefs.setString('refreshToken', cookie.value);
+
+      debugPrint('Refresh token saved: ${cookie.value}');
+    } else {
+      debugPrint('No refresh token found to save');
     }
   }
 
   Future<String?> _loadRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final enc = prefs.getString('refreshToken');
-    if (enc != null) {
-      return _decryptText(enc);
-    }
-    return null;
+    final storedToken = prefs.getString('refreshToken');
+    debugPrint('Loaded refresh token: $storedToken');
+    return storedToken;
   }
 
   Future<void> _clearRefreshToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('refreshToken');
     await _cookieJar.deleteAll();
+    debugPrint('Refresh token cleared');
   }
 
   Future<void> login(String login, String password,
@@ -82,10 +65,16 @@ class AuthProvider with ChangeNotifier {
       final response = await _authService.login(login, password);
       if (response.statusCode == 200) {
         _token = response.data['accessToken'];
-        currentUser = response.data;
+        currentUser = {
+          'username': response.data['username'],
+          'email': response.data['email'],
+          'roles': response.data['roles'],
+        };
 
         await _saveRefreshToken();
         notifyListeners();
+
+        debugPrint('Login successful. Token: ${_token}');
 
         if (context != null) {
           final roles = List<String>.from(response.data['roles']);
@@ -93,6 +82,7 @@ class AuthProvider with ChangeNotifier {
         }
       }
     } catch (e) {
+      debugPrint('Login error: $e');
       throw Exception('Login error: $e');
     } finally {
       _setLoading(false);
@@ -113,10 +103,15 @@ class AuthProvider with ChangeNotifier {
         final response = await _authService.refreshToken();
         if (response.statusCode == 200) {
           _token = response.data['accessToken'];
-          currentUser = response.data;
+          currentUser = {
+            'username': response.data['username'],
+            'email': response.data['email'],
+            'roles': response.data['roles'],
+          };
 
           await _saveRefreshToken();
           notifyListeners();
+          debugPrint('Silent login successful, new token: $_token');
         }
       } catch (e) {
         debugPrint('silentAutoLogin error: $e');
@@ -125,6 +120,7 @@ class AuthProvider with ChangeNotifier {
         _setLoading(false);
       }
     } else {
+      debugPrint('No stored refresh token for silent login');
       throw Exception('No stored refreshToken');
     }
   }
@@ -135,7 +131,6 @@ class AuthProvider with ChangeNotifier {
       try {
         _setLoading(true);
 
-        // вручную кладём refresh-токен в jar, чтобы он ушёл в запросе
         await _cookieJar.saveFromResponse(
           _baseUri,
           [Cookie('refreshToken', stored)],
@@ -144,27 +139,29 @@ class AuthProvider with ChangeNotifier {
         final response = await _authService.refreshToken();
         if (response.statusCode == 200) {
           _token = response.data['accessToken'];
-          currentUser = response.data;
+          currentUser = {
+            'username': response.data['username'],
+            'email': response.data['email'],
+            'roles': response.data['roles'],
+          };
 
-          // сохраняем новый refresh-токен из куки
           await _saveRefreshToken();
-
           notifyListeners();
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
-          return;
+          debugPrint('Auto-login successful. New token: $_token');
         }
       } catch (e) {
         debugPrint('autoLogin refresh error: $e');
       } finally {
         _setLoading(false);
       }
+    } else {
+      debugPrint('No stored refresh token for auto login');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacementNamed(context, '/auth');
+      });
     }
-
-    // если не авторизовались — на экран аутентификации
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushReplacementNamed(context, '/auth');
-    });
   }
 
   Future<void> logout(BuildContext context) async {
@@ -173,6 +170,7 @@ class AuthProvider with ChangeNotifier {
     currentUser = null;
     notifyListeners();
     Navigator.pushReplacementNamed(context, '/auth');
+    debugPrint('Logged out successfully');
   }
 
   void _navigateBasedOnRole(BuildContext context, List<String> roles) {
@@ -182,20 +180,26 @@ class AuthProvider with ChangeNotifier {
             ? '/moderator-home'
             : '/main';
     Navigator.pushReplacementNamed(context, route);
+    debugPrint('Navigating to role-based route: $route');
   }
 
   Future<void> refreshToken() async {
-    // Этот метод теперь используется только внутри autoLogin()
     try {
       _setLoading(true);
       final response = await _authService.refreshToken();
       if (response.statusCode == 200) {
         _token = response.data['accessToken'];
-        currentUser = response.data;
+        currentUser = {
+          'username': response.data['username'],
+          'email': response.data['email'],
+          'roles': response.data['roles'],
+        };
         await _saveRefreshToken();
         notifyListeners();
+        debugPrint('Token refreshed successfully. New token: $_token');
       } else {
-        throw Exception('Не удалось обновить токен: ${response.statusCode}');
+        debugPrint('Failed to refresh token: ${response.statusCode}');
+        throw Exception('Failed to refresh token');
       }
     } catch (e) {
       debugPrint('refreshToken error: $e');
