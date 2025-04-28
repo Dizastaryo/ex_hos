@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 class OrderService {
   static const _baseUrl =
-      'https://172.20.10.2:8000'; // Убедитесь, что URL соответствует вашему FastAPI
+      'https://172.20.10.3:8000'; // Убедитесь, что URL соответствует вашему FastAPI
   final Dio _dio;
 
   OrderService(this._dio);

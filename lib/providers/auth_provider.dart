@@ -13,7 +13,7 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   dynamic currentUser;
   String? _token;
-  final Uri _baseUri = Uri.parse('https://172.20.10.2:8443');
+  final Uri _baseUri = Uri.parse('https://172.20.10.3:8443');
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
     _dio.interceptors.add(CookieManager(_cookieJar));
