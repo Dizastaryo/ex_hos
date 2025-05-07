@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+OTHER_CFLAGS=$(inherited) -fstack-protector-strong
+OTHER_LDFLAGS=$(inherited) -Wl,-z,relro -Wl,-z,now
