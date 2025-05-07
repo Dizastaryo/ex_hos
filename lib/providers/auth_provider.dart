@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../services/auth_service.dart';
 import 'dart:io';
 
@@ -13,7 +14,9 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   dynamic currentUser;
   String? _token;
-  final Uri _baseUri = Uri.parse('https://172.20.10.3:8443');
+
+  // Берём базовый Uri из .env
+  final Uri _baseUri = Uri.parse(dotenv.env['AUTH_BASE_URL']!);
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
     _dio.interceptors.add(CookieManager(_cookieJar));
@@ -28,7 +31,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _saveRefreshToken() async {
-    // достаём куку refreshToken из jar
     final cookies = await _cookieJar.loadForRequest(_baseUri);
     final cookie = cookies.firstWhere(
       (c) => c.name == 'refreshToken',
@@ -36,7 +38,6 @@ class AuthProvider with ChangeNotifier {
     );
     if (cookie.value.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
-      // Сохраняем токен без шифрования
       await prefs.setString('refreshToken', cookie.value);
     }
   }
@@ -64,10 +65,8 @@ class AuthProvider with ChangeNotifier {
           'email': response.data['email'],
           'roles': response.data['roles'],
         };
-
         await _saveRefreshToken();
         notifyListeners();
-
         if (context != null) {
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
@@ -85,12 +84,10 @@ class AuthProvider with ChangeNotifier {
     if (stored != null) {
       try {
         _setLoading(true);
-
         await _cookieJar.saveFromResponse(
           _baseUri,
           [Cookie('refreshToken', stored)],
         );
-
         final response = await _authService.refreshToken();
         if (response.statusCode == 200) {
           _token = response.data['accessToken'];
@@ -99,7 +96,6 @@ class AuthProvider with ChangeNotifier {
             'email': response.data['email'],
             'roles': response.data['roles'],
           };
-
           await _saveRefreshToken();
           notifyListeners();
         }
@@ -119,12 +115,10 @@ class AuthProvider with ChangeNotifier {
     if (stored != null) {
       try {
         _setLoading(true);
-
         await _cookieJar.saveFromResponse(
           _baseUri,
           [Cookie('refreshToken', stored)],
         );
-
         final response = await _authService.refreshToken();
         if (response.statusCode == 200) {
           _token = response.data['accessToken'];
@@ -133,7 +127,6 @@ class AuthProvider with ChangeNotifier {
             'email': response.data['email'],
             'roles': response.data['roles'],
           };
-
           await _saveRefreshToken();
           notifyListeners();
           final roles = List<String>.from(response.data['roles']);
@@ -146,8 +139,6 @@ class AuthProvider with ChangeNotifier {
         _setLoading(false);
       }
     }
-
-    // если не авторизовались — на экран аутентификации
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Navigator.pushReplacementNamed(context, '/auth');
     });
@@ -171,7 +162,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> refreshToken() async {
-    // Этот метод теперь используется только внутри autoLogin()
     try {
       _setLoading(true);
       final response = await _authService.refreshToken();

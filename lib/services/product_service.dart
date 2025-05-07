@@ -1,25 +1,27 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/product.dart';
 import '../models/review.dart';
 
 class ProductService {
-  static const _baseUrl = 'https://172.20.10.3:8000';
   final Dio _dio;
+  // Берём базовый URL из .env
+  final String _baseUrl = dotenv.env['API_BASE_URL']!;
+
   ProductService(this._dio);
+
   Future<Product> addProduct({
     required ProductCreate product,
     required List<File> images,
   }) async {
     try {
       final formData = await _buildFormData(product, images);
-
       final response = await _dio.post(
         '$_baseUrl/products/',
         data: formData,
         options: Options(contentType: 'multipart/form-data'),
       );
-
       return Product.fromJson(response.data);
     } on DioException catch (e) {
       throw _formatError(e);
@@ -28,7 +30,6 @@ class ProductService {
     }
   }
 
-  /// Получить список продуктов с опциональным фильтром по категории и поиском по имени
   Future<List<Product>> getProducts({int? categoryId, String? search}) async {
     try {
       final response = await _dio.get(
@@ -38,7 +39,6 @@ class ProductService {
           if (search != null && search.isNotEmpty) 'search': search,
         },
       );
-
       return (response.data as List)
           .map((item) => Product.fromJson(item))
           .toList();
@@ -54,13 +54,11 @@ class ProductService {
   }) async {
     try {
       final formData = await _buildFormData(product, images);
-
       final response = await _dio.put(
         '$_baseUrl/products/$id',
         data: formData,
         options: Options(contentType: 'multipart/form-data'),
       );
-
       return Product.fromJson(response.data);
     } on DioException catch (e) {
       throw _formatError(e);
@@ -83,7 +81,6 @@ class ProductService {
         filename: file.path.split('/').last,
       ),
     ));
-
     return FormData.fromMap({
       ...product.toJson(),
       'images': imageFiles,
@@ -142,7 +139,6 @@ class ProductService {
     return Review.fromJson(resp.data);
   }
 
-  /// Получить все отзывы для продукта GET /reviews/product/{productId}
   Future<List<Review>> getReviewsForProduct(int productId) async {
     final resp = await _dio.get('$_baseUrl/reviews/product/$productId');
     return (resp.data as List).map((e) => Review.fromJson(e)).toList();

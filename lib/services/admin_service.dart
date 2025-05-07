@@ -1,9 +1,11 @@
 import 'package:dio/dio.dart';
-import '../models/user_dto.dart'; // Импортируем новый файл
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../models/user_dto.dart'; // Импортируем DTO
 
 class UserService {
+  // Берём базовый URL аутентификации из .env и дописываем путь к users
+  final String _baseUrl = '${dotenv.env['AUTH_BASE_URL']!}/api/test/users';
   final Dio _dio;
-  static const _baseUrl = 'https://172.20.10.2:8443/api/test/users';
 
   UserService(this._dio);
 
@@ -33,9 +35,7 @@ class UserService {
     try {
       final response = await _dio.get(
         '$_baseUrl/search',
-        queryParameters: {
-          'query': query,
-        },
+        queryParameters: {'query': query},
       );
       return (response.data as List)
           .map((json) => UserDTO.fromJson(json))
