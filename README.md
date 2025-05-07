@@ -1,4 +1,4 @@
-# amanzat_q
+# aidyn_market
 
 A new Flutter project.
 

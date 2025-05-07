@@ -168,7 +168,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         final product = products[index];
         final imageUrl = product.imageUrls.isNotEmpty
             ? productService.getImageUrl(product.imageUrls.first)
-            : 'https://via.placeholder.com/150';
+            : productService.placeholderImageUrl;
 
         return GestureDetector(
           onTap: () {

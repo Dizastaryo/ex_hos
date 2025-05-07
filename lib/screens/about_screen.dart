@@ -169,7 +169,7 @@ class _AboutScreenState extends State<AboutScreen> {
     final productService = Provider.of<ProductService>(context, listen: false);
     final imgUrl = product.imageUrls.isNotEmpty
         ? productService.getImageUrl(product.imageUrls.first)
-        : 'https://via.placeholder.com/150';
+        : productService.placeholderImageUrl;
 
     return GestureDetector(
       onTap: () => _showProductOptions(context, product),

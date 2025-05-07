@@ -8,8 +8,13 @@ class ProductService {
   final Dio _dio;
   // Берём базовый URL из .env
   final String _baseUrl = dotenv.env['API_BASE_URL']!;
+  // Берём URL заглушки для изображений из .env
+  final String _placeholderImageUrl = dotenv.env['PLACEHOLDER_IMAGE_URL']!;
 
   ProductService(this._dio);
+
+  /// URL заглушки, если у продукта нет изображений
+  String get placeholderImageUrl => _placeholderImageUrl;
 
   Future<Product> addProduct({
     required ProductCreate product,
@@ -145,12 +150,12 @@ class ProductService {
   }
 
   String getImageUrl(String imagePath) {
-    return '$_baseUrl$imagePath';
+    return '$_baseUrl\$imagePath';
   }
 
   String _formatError(DioException e) {
     return e.response != null
-        ? 'Ошибка ${e.response?.statusCode}: ${e.response?.data}'
-        : 'Сетевая ошибка: ${e.message}';
+        ? 'Ошибка \${e.response?.statusCode}: \${e.response?.data}'
+        : 'Сетевая ошибка: \${e.message}';
   }
 }
