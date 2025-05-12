@@ -150,7 +150,11 @@ class ProductService {
   }
 
   String getImageUrl(String imagePath) {
-    return '$_baseUrl\$imagePath';
+    final cleanBase = _baseUrl.endsWith('/')
+        ? _baseUrl.substring(0, _baseUrl.length - 1)
+        : _baseUrl;
+    final cleanPath = imagePath.startsWith('/') ? imagePath : '/$imagePath';
+    return '$cleanBase$cleanPath';
   }
 
   String _formatError(DioException e) {

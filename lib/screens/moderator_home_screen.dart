@@ -26,6 +26,7 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
         title: const Text('Панель модератора'),
         centerTitle: true,
         backgroundColor: Color(0xFF6A0DAD),
+        automaticallyImplyLeading: false,
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),

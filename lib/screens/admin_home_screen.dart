@@ -26,6 +26,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         title: const Text('Панель администратора'),
         centerTitle: true,
         backgroundColor: Color(0xFF6A0DAD),
+        automaticallyImplyLeading: false,
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
