@@ -46,6 +46,7 @@ flutter:
   assets:
     - assets/logo.png
     - assets/animation/
+    - .env
     
 
 flutter_launcher_icons:
