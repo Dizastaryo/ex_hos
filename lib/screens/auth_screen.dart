@@ -258,7 +258,7 @@ class _AuthScreenState extends State<AuthScreen>
           ),
           const SizedBox(height: 16),
           _buildText(
-            'Password',
+            'Пароль',
             Icons.lock,
             _loginPassCtrl,
             (v) => v!.length < 6 ? 'Минимум 6 символов' : null,
@@ -289,7 +289,7 @@ class _AuthScreenState extends State<AuthScreen>
                 }
               }
             },
-            child: const Text('Login'),
+            child: const Text('Войти'),
           ),
           const SizedBox(height: 12),
           TextButton(

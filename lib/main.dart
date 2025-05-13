@@ -103,7 +103,6 @@ void main() async {
             !err.requestOptions.extra.containsKey('retry')) {
           try {
             await authProvider.silentAutoLogin();
-
             err.requestOptions.extra['retry'] = true;
             final clonedReq = await dio.fetch(err.requestOptions);
             handler.resolve(clonedReq);
