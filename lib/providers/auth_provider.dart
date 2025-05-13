@@ -19,14 +19,10 @@ class AuthProvider with ChangeNotifier {
   dynamic currentUser;
   String? _token;
 
-  // Берём базовый Uri из .env
   final Uri _baseUri = Uri.parse(dotenv.env['AUTH_BASE_URL']!);
-
-  // Ключ для безопасного хранилища
   static const _kRefreshToken = 'refreshToken';
 
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
-    // Устанавливаем CookieManager для Dio
     _dio.interceptors.add(CookieManager(_cookieJar));
   }
 
@@ -51,6 +47,11 @@ class AuthProvider with ChangeNotifier {
 
   Future<String?> _loadRefreshToken() async {
     return await _secureStorage.read(key: _kRefreshToken);
+  }
+
+  /// Метод для отладки: возвращает текущее значение refreshToken
+  Future<String?> loadRefreshTokenForDebug() async {
+    return await _loadRefreshToken();
   }
 
   Future<void> _clearRefreshToken() async {
@@ -116,38 +117,13 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> autoLogin(BuildContext context) async {
-    final stored = await _loadRefreshToken();
-    if (stored != null) {
-      try {
-        _setLoading(true);
-        await _cookieJar.saveFromResponse(
-          _baseUri,
-          [Cookie('refreshToken', stored)],
-        );
-        final response = await _authService.refreshToken();
-        if (response.statusCode == 200) {
-          _token = response.data['accessToken'];
-          currentUser = {
-            'username': response.data['username'],
-            'email': response.data['email'],
-            'roles': response.data['roles'],
-          };
-          await _saveRefreshToken();
-          notifyListeners();
-          final roles = List<String>.from(response.data['roles']);
-          _navigateBasedOnRole(context, roles);
-          return;
-        }
-      } catch (e) {
-        debugPrint('autoLogin refresh error: $e');
-      } finally {
-        _setLoading(false);
-      }
+  Future<bool> tryRefreshToken() async {
+    try {
+      await silentAutoLogin();
+      return true;
+    } catch (_) {
+      return false;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Navigator.pushReplacementNamed(context, '/auth');
-    });
   }
 
   Future<void> logout(BuildContext context) async {
