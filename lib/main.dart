@@ -42,11 +42,21 @@ import 'services/admin_service.dart';
 
 /// Глобальное переопределение HttpClient для принятия самоподписанных сертификатов
 class MyHttpOverrides extends HttpOverrides {
+  final String proxyHost;
+  final int proxyPort;
+
+  MyHttpOverrides({required this.proxyHost, required this.proxyPort});
+
   @override
   HttpClient createHttpClient(SecurityContext? context) {
-    final client = super.createHttpClient(context);
+    final HttpClient client = super.createHttpClient(context);
+    // Игнорируем ошибки сертификатов (самоподписанные)
     client.badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
+    // Указываем прокси для всех запросов
+    client.findProxy = (Uri uri) {
+      return 'PROXY \$proxyHost:\$proxyPort;';
+    };
     return client;
   }
 }
@@ -55,9 +65,14 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
   // Применяем глобальное переопределение для HttpClient
-  HttpOverrides.global = MyHttpOverrides();
+  const proxyHost = '172.22.103.57';
+  const proxyPort = 8888;
 
-  // Инициализация уведомлений и фоновых задач
+  // Применяем глобальное переопределение для HttpClient
+  HttpOverrides.global = MyHttpOverrides(
+    proxyHost: proxyHost,
+    proxyPort: proxyPort,
+  ); // Инициализация уведомлений и фоновых задач
   await _initNotifications();
   await _requestNotificationPermissions();
   Workmanager().initialize(_callbackDispatcher);
@@ -77,12 +92,10 @@ void main() async {
 
   // Переопределяем HttpClient для Dio, чтобы игнорировать ошибки SSL
   dio.httpClientAdapter = IOHttpClientAdapter(
-    createHttpClient: () {
-      final client = HttpClient();
-      client.badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-      return client;
-    },
+    createHttpClient: () =>
+        HttpOverrides.current
+            ?.createHttpClient(SecurityContext.defaultContext) ??
+        HttpClient(),
   );
 
   // Провайдер аутентификации
