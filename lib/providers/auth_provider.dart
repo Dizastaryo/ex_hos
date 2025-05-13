@@ -1,16 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import '../services/auth_service.dart';
-import 'dart:io';
 
 class AuthProvider with ChangeNotifier {
   final Dio _dio;
   final CookieJar _cookieJar;
   final AuthService _authService;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
   bool _isLoading = false;
   dynamic currentUser;
   String? _token;
@@ -18,7 +22,11 @@ class AuthProvider with ChangeNotifier {
   // Берём базовый Uri из .env
   final Uri _baseUri = Uri.parse(dotenv.env['AUTH_BASE_URL']!);
 
+  // Ключ для безопасного хранилища
+  static const _kRefreshToken = 'refreshToken';
+
   AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
+    // Устанавливаем CookieManager для Dio
     _dio.interceptors.add(CookieManager(_cookieJar));
   }
 
@@ -37,19 +45,16 @@ class AuthProvider with ChangeNotifier {
       orElse: () => Cookie('', ''),
     );
     if (cookie.value.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('refreshToken', cookie.value);
+      await _secureStorage.write(key: _kRefreshToken, value: cookie.value);
     }
   }
 
   Future<String?> _loadRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('refreshToken');
+    return await _secureStorage.read(key: _kRefreshToken);
   }
 
   Future<void> _clearRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('refreshToken');
+    await _secureStorage.delete(key: _kRefreshToken);
     await _cookieJar.deleteAll();
   }
 
@@ -67,6 +72,7 @@ class AuthProvider with ChangeNotifier {
         };
         await _saveRefreshToken();
         notifyListeners();
+
         if (context != null) {
           final roles = List<String>.from(response.data['roles']);
           _navigateBasedOnRole(context, roles);
@@ -193,14 +199,19 @@ class AuthProvider with ChangeNotifier {
       _authService.confirmPasswordReset(login, otp, newPassword);
 
   Future<void> sendEmailOtp(String email) => _authService.sendEmailOtp(email);
+
   Future<void> verifyEmailOtp(String email, String otp) =>
       _authService.verifyEmailOtp(email, otp);
+
   Future<void> sendSmsOtp(String phone) => _authService.sendSmsOtp(phone);
+
   Future<void> verifySmsOtp(String phone, String otp) =>
       _authService.verifySmsOtp(phone, otp);
+
   Future<void> registerWithEmail(
           String username, String email, String password, String otp) =>
       _authService.registerWithEmail(username, email, password, otp);
+
   Future<void> registerWithPhone(
           String username, String phone, String password, String otp) =>
       _authService.registerWithPhone(username, phone, password, otp);
