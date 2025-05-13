@@ -97,7 +97,8 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Все заказы')),
+      appBar: AppBar(
+          automaticallyImplyLeading: false, title: const Text('Все заказы')),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : orders.isEmpty

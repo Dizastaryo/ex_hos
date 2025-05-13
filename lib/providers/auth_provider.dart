@@ -167,6 +167,21 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  List<String> get userRoles {
+    final roles = currentUser != null && currentUser['roles'] is List
+        ? List<String>.from(currentUser['roles'])
+        : <String>[];
+    return roles;
+  }
+
+  /// Вычисляет, куда навигировать по ролям
+  String routeForCurrentUser() {
+    final roles = userRoles;
+    if (roles.contains('ROLE_ADMIN')) return '/admin-home';
+    if (roles.contains('ROLE_MODERATOR')) return '/moderator-home';
+    return '/main';
+  }
+
   Future<void> requestPasswordReset(String login) =>
       _authService.requestPasswordReset(login);
 

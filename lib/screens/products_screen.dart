@@ -57,6 +57,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Продукты'),
+        automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFF6A0DAD),
         elevation: 0,
       ),

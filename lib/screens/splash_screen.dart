@@ -12,13 +12,10 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-  late AnimationController _logoController;
-  late Animation<double> _logoAnimation;
-
-  late AnimationController _textController;
-  late Animation<double> _textAnimation;
-
-  String? _debugRefreshToken;
+  late final AnimationController _logoController;
+  late final Animation<double> _logoAnimation;
+  late final AnimationController _textController;
+  late final Animation<double> _textAnimation;
 
   @override
   void initState() {
@@ -39,21 +36,11 @@ class _SplashScreenState extends State<SplashScreen>
     _textAnimation =
         CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
+    // Запускаем анимации последовательно
     _logoController.forward().then((_) => _textController.forward());
 
-    // Читаем токен из secure storage для дебага
-    Future.microtask(_loadDebugRefreshToken);
-
-    // По окончании сплеша делаем автологин
+    // По окончании сплеша — автологин и навигация
     Timer(const Duration(seconds: 3), _handleAutoLogin);
-  }
-
-  Future<void> _loadDebugRefreshToken() async {
-    final auth = context.read<AuthProvider>();
-    final token = await auth.loadRefreshTokenForDebug();
-    setState(() {
-      _debugRefreshToken = token;
-    });
   }
 
   Future<void> _handleAutoLogin() async {
@@ -61,7 +48,9 @@ class _SplashScreenState extends State<SplashScreen>
     final success = await auth.tryRefreshToken();
 
     if (success) {
-      Navigator.pushReplacementNamed(context, '/main');
+      // Навигация по ролям: admin, moderator или main
+      final route = auth.routeForCurrentUser();
+      Navigator.pushReplacementNamed(context, route);
     } else {
       Navigator.pushReplacementNamed(context, '/auth');
     }
@@ -78,55 +67,33 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF6A0DAD),
-      body: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ScaleTransition(
-                  scale: _logoAnimation,
-                  child: const Icon(
-                    Icons.shopping_bag_rounded,
-                    size: 100,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                FadeTransition(
-                  opacity: _textAnimation,
-                  child: const Text(
-                    'Aidyn Market',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-              ],
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ScaleTransition(
+              scale: _logoAnimation,
+              child: const Icon(
+                Icons.shopping_bag_rounded,
+                size: 100,
+                color: Colors.white,
+              ),
             ),
-          ),
-          if (_debugRefreshToken != null) // показываем токен, если прочитался
-            Positioned(
-              bottom: 20,
-              left: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.white70,
-                child: Text(
-                  'Debug refreshToken:\n$_debugRefreshToken',
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
+            const SizedBox(height: 24),
+            FadeTransition(
+              opacity: _textAnimation,
+              child: const Text(
+                'Aidyn Market',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
                 ),
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

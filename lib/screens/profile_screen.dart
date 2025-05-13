@@ -14,6 +14,7 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Color(0xFF6A0DAD), // основной цвет
         elevation: 0,
         centerTitle: true,
