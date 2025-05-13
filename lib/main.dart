@@ -20,6 +20,7 @@ import 'providers/auth_provider.dart';
 import 'services/product_service.dart';
 import 'services/category_service.dart';
 import 'services/order_service.dart';
+import 'services/admin_service.dart';
 
 // Screens
 import 'screens/product_detail_screen.dart';
@@ -38,9 +39,8 @@ import 'screens/admin_home_screen.dart';
 import 'screens/moderator_home_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
-import 'services/admin_service.dart';
 
-/// Глобальное переопределение HttpClient для принятия самоподписанных сертификатов
+/// Глобальное переопределение HttpClient для прокси Burp и принятия самоподписанных сертификатов
 class MyHttpOverrides extends HttpOverrides {
   final String proxyHost;
   final int proxyPort;
@@ -54,9 +54,7 @@ class MyHttpOverrides extends HttpOverrides {
     client.badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
     // Указываем прокси для всех запросов
-    client.findProxy = (Uri uri) {
-      return 'PROXY \$proxyHost:\$proxyPort;';
-    };
+    client.findProxy = (Uri uri) => 'PROXY $proxyHost:$proxyPort;';
     return client;
   }
 }
@@ -64,7 +62,8 @@ class MyHttpOverrides extends HttpOverrides {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-  // Применяем глобальное переопределение для HttpClient
+
+  // IP вашего ноутбука и порт Burp Suite
   const proxyHost = '172.22.103.57';
   const proxyPort = 8888;
 
@@ -72,7 +71,9 @@ void main() async {
   HttpOverrides.global = MyHttpOverrides(
     proxyHost: proxyHost,
     proxyPort: proxyPort,
-  ); // Инициализация уведомлений и фоновых задач
+  );
+
+  // Инициализация уведомлений и фоновых задач
   await _initNotifications();
   await _requestNotificationPermissions();
   Workmanager().initialize(_callbackDispatcher);
@@ -90,18 +91,16 @@ void main() async {
   );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Переопределяем HttpClient для Dio, чтобы игнорировать ошибки SSL
+  // Настройка Dio: используем тот же HttpClient с прокси и сертификатом
   dio.httpClientAdapter = IOHttpClientAdapter(
     createHttpClient: () =>
-        HttpOverrides.current
-            ?.createHttpClient(SecurityContext.defaultContext) ??
-        HttpClient(),
+        HttpOverrides.current!.createHttpClient(SecurityContext.defaultContext),
   );
 
   // Провайдер аутентификации
   final authProvider = AuthProvider(dio, cookieJar);
 
-  // Интерсептор для добавления Access-token
+  // Интерсептор для добавления Access-token и автопродления сессии
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
