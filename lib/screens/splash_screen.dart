@@ -9,6 +9,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
+enum _Phase { animating, loading }
+
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _logoController;
@@ -16,11 +18,13 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _textController;
   late final Animation<double> _textAnimation;
 
+  _Phase _phase = _Phase.animating;
+
   @override
   void initState() {
     super.initState();
 
-    // Инициализируем анимации
+    // 1) Инициализируем контроллеры анимации
     _logoController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -35,28 +39,28 @@ class _SplashScreenState extends State<SplashScreen>
     _textAnimation =
         CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
-    // Запускаем анимации последовательно
-    _logoController.forward().then((_) => _textController.forward());
-
-    // Сразу пытаемся автологин
-    _handleAutoLogin();
+    // 2) Запускаем анимации последовательно
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _logoController.forward().then((_) {
+        _textController.forward().then((_) {
+          // 3) После анимаций переходим к фазе loading
+          setState(() => _phase = _Phase.loading);
+          _handleAutoLogin();
+        });
+      });
+    });
   }
 
   Future<void> _handleAutoLogin() async {
     final auth = context.read<AuthProvider>();
 
-    // 1) Проверяем, есть ли вообще сохранённый refreshToken
     final stored = await auth.loadRefreshTokenForDebug();
     if (stored == null) {
-      // если токена нет — сразу на экран авторизации
       Navigator.pushReplacementNamed(context, '/auth');
       return;
     }
 
-    // 2) Токен есть — ждём попытки silentAutoLogin()
     final success = await auth.tryRefreshToken();
-
-    // 3) Навигация по результату
     if (success) {
       final route = auth.routeForCurrentUser();
       Navigator.pushReplacementNamed(context, route);
@@ -101,6 +105,19 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
               ),
             ),
+
+            // Если мы перешли в фазу loading — показываем спиннер
+            if (_phase == _Phase.loading) ...[
+              const SizedBox(height: 32),
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Loading…',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
           ],
         ),
       ),
