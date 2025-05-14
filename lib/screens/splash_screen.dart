@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -39,16 +38,26 @@ class _SplashScreenState extends State<SplashScreen>
     // Запускаем анимации последовательно
     _logoController.forward().then((_) => _textController.forward());
 
-    // По окончании сплеша — автологин и навигация
-    Timer(const Duration(seconds: 3), _handleAutoLogin);
+    // Сразу пытаемся автологин
+    _handleAutoLogin();
   }
 
   Future<void> _handleAutoLogin() async {
     final auth = context.read<AuthProvider>();
+
+    // 1) Проверяем, есть ли вообще сохранённый refreshToken
+    final stored = await auth.loadRefreshTokenForDebug();
+    if (stored == null) {
+      // если токена нет — сразу на экран авторизации
+      Navigator.pushReplacementNamed(context, '/auth');
+      return;
+    }
+
+    // 2) Токен есть — ждём попытки silentAutoLogin()
     final success = await auth.tryRefreshToken();
 
+    // 3) Навигация по результату
     if (success) {
-      // Навигация по ролям: admin, moderator или main
       final route = auth.routeForCurrentUser();
       Navigator.pushReplacementNamed(context, route);
     } else {
