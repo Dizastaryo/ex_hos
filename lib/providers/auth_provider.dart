@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:cookie_jar/cookie_jar.dart';
@@ -22,9 +21,7 @@ class AuthProvider with ChangeNotifier {
   final Uri _baseUri = Uri.parse(dotenv.env['AUTH_BASE_URL']!);
   static const _kRefreshToken = 'refreshToken';
 
-  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {
-    _dio.interceptors.add(CookieManager(_cookieJar));
-  }
+  AuthProvider(this._dio, this._cookieJar) : _authService = AuthService(_dio) {}
 
   bool get isLoading => _isLoading;
   String? get token => _token;
@@ -88,32 +85,37 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> silentAutoLogin() async {
     final stored = await _loadRefreshToken();
-    if (stored != null) {
-      try {
-        _setLoading(true);
-        await _cookieJar.saveFromResponse(
-          _baseUri,
-          [Cookie('refreshToken', stored)],
-        );
-        final response = await _authService.refreshToken();
-        if (response.statusCode == 200) {
-          _token = response.data['accessToken'];
-          currentUser = {
-            'username': response.data['username'],
-            'email': response.data['email'],
-            'roles': response.data['roles'],
-          };
-          await _saveRefreshToken();
-          notifyListeners();
-        }
-      } catch (e) {
-        debugPrint('silentAutoLogin error: $e');
-        rethrow;
-      } finally {
-        _setLoading(false);
+    if (stored == null) throw Exception('No stored refreshToken');
+
+    _setLoading(true);
+    try {
+      // Удаляем все куки (в т.ч. старый refreshToken)
+      await _cookieJar.deleteAll();
+
+      // Сохраняем единственную куку из secure storage
+      await _cookieJar.saveFromResponse(
+        _baseUri,
+        [Cookie(_kRefreshToken, stored)],
+      );
+
+      final response = await _authService.refreshToken();
+      if (response.statusCode == 200) {
+        _token = response.data['accessToken'];
+        currentUser = {
+          'username': response.data['username'],
+          'email': response.data['email'],
+          'roles': response.data['roles'],
+        };
+        await _saveRefreshToken();
+        notifyListeners();
+      } else {
+        throw Exception('Не удалось обновить токен: ${response.statusCode}');
       }
-    } else {
-      throw Exception('No stored refreshToken');
+    } catch (e) {
+      debugPrint('silentAutoLogin error: $e');
+      rethrow;
+    } finally {
+      _setLoading(false);
     }
   }
 
