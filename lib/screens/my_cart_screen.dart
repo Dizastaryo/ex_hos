@@ -139,6 +139,7 @@ class _MyCartScreenState extends State<MyCartScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Моя корзина'),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_forever),

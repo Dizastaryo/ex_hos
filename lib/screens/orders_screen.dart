@@ -14,9 +14,15 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
+  final _formKey = GlobalKey<FormState>();
   late final ProductService productService;
   late final OrderService orderService;
-  final TextEditingController _addressController = TextEditingController();
+
+  final _streetController = TextEditingController();
+  final _houseController = TextEditingController();
+  final _apartmentController = TextEditingController();
+  final _entranceController = TextEditingController();
+
   bool isLoading = false;
 
   @override
@@ -26,14 +32,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
     orderService = Provider.of<OrderService>(context, listen: false);
   }
 
+  @override
+  void dispose() {
+    _streetController.dispose();
+    _houseController.dispose();
+    _apartmentController.dispose();
+    _entranceController.dispose();
+    super.dispose();
+  }
+
   Future<void> _submitOrder() async {
-    final address = _addressController.text.trim();
-    if (address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пожалуйста, введите адрес доставки')),
-      );
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
+
+    final address = '${_streetController.text.trim()}, '
+        'дом ${_houseController.text.trim()}, '
+        'кв. ${_apartmentController.text.trim()}, '
+        'подъезд ${_entranceController.text.trim()}';
 
     setState(() => isLoading = true);
     try {
@@ -52,11 +66,164 @@ class _OrdersScreenState extends State<OrdersScreen> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка: $e')),
+        SnackBar(content: Text('Ошибка при оформлении: $e')),
       );
     } finally {
       setState(() => isLoading = false);
     }
+  }
+
+  Widget _buildOrderSummary() {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ваш заказ',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ...widget.items.map((item) {
+              return FutureBuilder<Product>(
+                future: productService.getProductById(item['product_id']!),
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  final p = snap.data!;
+                  final imageUrl = p.imageUrls.isNotEmpty
+                      ? productService.getImageUrl(p.imageUrls.first)
+                      : 'https://via.placeholder.com/80';
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        // Картинка товара
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            imageUrl,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Описание товара и количество
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(p.name,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              Text('Кол-во: ${item['quantity']}'),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Итого: ${(p.price * item['quantity']!).toStringAsFixed(2)} ₸',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            }).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddressForm() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Адрес доставки',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _streetController,
+                decoration: const InputDecoration(
+                  labelText: 'Улица',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Введите улицу' : null,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _houseController,
+                      decoration: const InputDecoration(
+                        labelText: 'Дом',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Укажите дом' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _apartmentController,
+                      decoration: const InputDecoration(
+                        labelText: 'Квартира',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Укажите кв.' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 1,
+                    child: TextFormField(
+                      controller: _entranceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Подъезд',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? 'Укажите подъезд'
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -65,55 +232,28 @@ class _OrdersScreenState extends State<OrdersScreen> {
       appBar: AppBar(title: const Text('Оформление заказа')),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Ваш заказ:',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: widget.items.length,
-                      itemBuilder: (context, i) {
-                        final item = widget.items[i];
-                        return FutureBuilder<Product>(
-                          future: productService
-                              .getProductById(item['product_id']!),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData) {
-                              return ListTile(
-                                title: Text(snapshot.data!.name),
-                                subtitle:
-                                    Text('Количество: ${item['quantity']}'),
-                                trailing: Text(
-                                  '${(snapshot.data!.price * item['quantity']!).toStringAsFixed(2)} ₸',
-                                ),
-                              );
-                            }
-                            return const ListTile(
-                              title: Center(child: CircularProgressIndicator()),
-                            );
-                          },
-                        );
-                      },
+                  _buildOrderSummary(),
+                  _buildAddressForm(),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _submitOrder,
+                      child: const Text(
+                        'Перейти к оплате',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _addressController,
-                    decoration: const InputDecoration(
-                      labelText: 'Адрес доставки',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _submitOrder,
-                    child: const Text('Перейти к оплате'),
                   ),
                 ],
               ),

@@ -57,7 +57,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _submitReview() async {
-    if (_newRating == 0) return; // require rating
+    if (_newRating == 0) return;
     try {
       await Provider.of<ProductService>(context, listen: false).addReview(
         productId: widget.productId,
@@ -71,11 +71,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _reviewsFuture = Provider.of<ProductService>(context, listen: false)
             .getReviewsForProduct(widget.productId);
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Спасибо за отзыв!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Спасибо за отзыв!')),
+      );
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
     }
   }
 
@@ -255,7 +257,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                 ],
               ),
-              _buildBottomActionBar(context, product),
+              _buildBottomActionBar(context, snapshot.data!),
             ],
           );
         },
@@ -305,21 +307,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   icon: const Icon(Icons.shopping_cart),
                   label: const Text('В корзину'),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepOrange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12))),
+                    backgroundColor: Colors.deepOrange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
                   onPressed: () async {
                     try {
                       await Provider.of<ProductService>(context, listen: false)
                           .addToCart(product.id);
                       ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Добавлено в корзину')));
-                      Navigator.pushNamed(context, '/my-cart');
+                        const SnackBar(
+                          content: Text('Продукт добавлен в корзину'),
+                        ),
+                      );
+                      // убрали навигацию в корзину
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Ошибка при добавлении: $e')));
+                        SnackBar(
+                          content: Text('Не удалось добавить в корзину: $e'),
+                        ),
+                      );
                     }
                   },
                 ),

@@ -57,10 +57,15 @@ class AuthService {
   }
 
   // Регистрация через email
-  Future<void> registerWithEmail(
-      String username, String email, String password, String otp) async {
+  // Регистрация через email — теперь возвращает Response
+  Future<Response> registerWithEmail(
+    String username,
+    String email,
+    String password,
+    String otp,
+  ) async {
     try {
-      await dio.post(
+      return await dio.post(
         '$_authBaseUrl/api/auth/signup',
         data: {
           'username': username,
@@ -75,11 +80,15 @@ class AuthService {
     }
   }
 
-  // Регистрация по телефону
-  Future<void> registerWithPhone(
-      String username, String phone, String password, String otp) async {
+  // Регистрация по телефону — теперь возвращает Response
+  Future<Response> registerWithPhone(
+    String username,
+    String phone,
+    String password,
+    String otp,
+  ) async {
     try {
-      await dio.post(
+      return await dio.post(
         '$_authBaseUrl/api/auth/signup-phone',
         data: {
           'username': username,

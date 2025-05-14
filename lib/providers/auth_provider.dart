@@ -128,12 +128,22 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// В AuthProvider
   Future<void> logout(BuildContext context) async {
-    await _clearRefreshToken();
-    _token = null;
-    currentUser = null;
-    notifyListeners();
-    Navigator.pushReplacementNamed(context, '/auth');
+    _setLoading(true);
+    try {
+      await _authService.logout();
+      await _clearRefreshToken();
+      _token = null;
+      currentUser = null;
+      notifyListeners();
+      Navigator.pushReplacementNamed(context, '/auth');
+    } catch (e) {
+      debugPrint('Logout error: $e');
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
   }
 
   void _navigateBasedOnRole(BuildContext context, List<String> roles) {
@@ -201,11 +211,75 @@ class AuthProvider with ChangeNotifier {
   Future<void> verifySmsOtp(String phone, String otp) =>
       _authService.verifySmsOtp(phone, otp);
 
+  /// Registers via email, then treats the response exactly like login.
   Future<void> registerWithEmail(
-          String username, String email, String password, String otp) =>
-      _authService.registerWithEmail(username, email, password, otp);
+    String username,
+    String email,
+    String password,
+    String otp, [
+    BuildContext? context,
+  ]) async {
+    try {
+      _setLoading(true);
+      final response =
+          await _authService.registerWithEmail(username, email, password, otp);
+      if (response.statusCode == 200) {
+        _token = response.data['accessToken'];
+        currentUser = {
+          'username': response.data['username'],
+          'email': response.data['email'],
+          'roles': response.data['roles'],
+        };
+        await _saveRefreshToken();
+        notifyListeners();
 
+        if (context != null) {
+          final roles = List<String>.from(response.data['roles']);
+          _navigateBasedOnRole(context, roles);
+        }
+      } else {
+        throw Exception('Registration error: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('registerWithEmail error: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  /// Registers via phone, then treats the response exactly like login.
   Future<void> registerWithPhone(
-          String username, String phone, String password, String otp) =>
-      _authService.registerWithPhone(username, phone, password, otp);
+    String username,
+    String phone,
+    String password,
+    String otp, [
+    BuildContext? context,
+  ]) async {
+    try {
+      _setLoading(true);
+      final response =
+          await _authService.registerWithPhone(username, phone, password, otp);
+      if (response.statusCode == 200) {
+        _token = response.data['accessToken'];
+        currentUser = {
+          'username': response.data['username'],
+          'email': response.data['email'], // if available
+          'roles': response.data['roles'],
+        };
+        await _saveRefreshToken();
+        notifyListeners();
+
+        if (context != null) {
+          final roles = List<String>.from(response.data['roles']);
+          _navigateBasedOnRole(context, roles);
+        }
+      } else {
+        throw Exception('Registration error: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('registerWithPhone error: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
 }

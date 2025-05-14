@@ -23,8 +23,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-
-    // 1) Инициализируем контроллеры анимации
     _logoController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -39,11 +37,9 @@ class _SplashScreenState extends State<SplashScreen>
     _textAnimation =
         CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
-    // 2) Запускаем анимации последовательно
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _logoController.forward().then((_) {
         _textController.forward().then((_) {
-          // 3) После анимаций переходим к фазе loading
           setState(() => _phase = _Phase.loading);
           _handleAutoLogin();
         });
