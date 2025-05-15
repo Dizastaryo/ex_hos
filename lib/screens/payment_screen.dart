@@ -71,9 +71,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      await context
-          .read<OrderService>()
-          .createPayment(widget.orderId, widget.orderTotal);
+      await context.read<OrderService>().createPayment(widget.orderId);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

@@ -51,13 +51,12 @@ class OrderService {
     }
   }
 
-  Future<Map<String, dynamic>> createPayment(int orderId, double amount) async {
+  Future<Map<String, dynamic>> createPayment(int orderId) async {
     try {
       final response = await _dio.post(
         '$_baseUrl/payments/create',
         data: {
           'order_id': orderId,
-          'amount': amount,
         },
       );
       return response.data as Map<String, dynamic>;
