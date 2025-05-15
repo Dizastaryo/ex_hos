@@ -105,7 +105,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
-                        // Картинка товара
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: Image.network(
@@ -116,7 +115,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // Описание товара и количество
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,6 +168,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 controller: _streetController,
                 decoration: const InputDecoration(
                   labelText: 'Улица',
+                  isDense: true,
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) =>
@@ -179,11 +178,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
               Row(
                 children: [
                   Expanded(
-                    flex: 2,
+                    flex: 1,
                     child: TextFormField(
                       controller: _houseController,
                       decoration: const InputDecoration(
                         labelText: 'Дом',
+                        isDense: true,
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) =>
@@ -192,11 +192,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    flex: 2,
+                    flex: 1,
                     child: TextFormField(
                       controller: _apartmentController,
                       decoration: const InputDecoration(
-                        labelText: 'Квартира',
+                        labelText: 'Кв.',
+                        isDense: true,
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) =>
@@ -210,6 +211,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                       controller: _entranceController,
                       decoration: const InputDecoration(
                         labelText: 'Подъезд',
+                        isDense: true,
                         border: OutlineInputBorder(),
                       ),
                       validator: (v) => v == null || v.trim().isEmpty

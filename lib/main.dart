@@ -64,7 +64,7 @@ void main() async {
   await dotenv.load(fileName: '.env');
 
   // IP вашего ноутбука и порт Burp Suite
-  const proxyHost = '172.22.103.187';
+  const proxyHost = '172.22.103.160';
   const proxyPort = 8888;
 
   // Применяем глобальное переопределение для HttpClient
