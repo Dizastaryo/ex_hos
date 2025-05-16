@@ -100,6 +100,7 @@ void main() async {
       },
       onError: (err, handler) async {
         if (err.response?.statusCode == 401 &&
+            err.response?.statusCode == 403 &&
             !err.requestOptions.extra.containsKey('retry')) {
           try {
             await authProvider.silentAutoLogin();
