@@ -47,7 +47,7 @@ flutter:
     - assets/logo.png
     - assets/animation/
     - .env
-    - assets/certs/spring-server.crt
+    - assets/cert/spring-server.crt
     
 
 flutter_launcher_icons:
