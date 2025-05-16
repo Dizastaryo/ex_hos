@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'dart:io'; // Для использования HttpClient и SecurityContext
+import 'dart:io'; // Для использования HttpClient и X509Certificate
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cookie_jar/cookie_jar.dart';
@@ -12,7 +12,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -41,21 +40,22 @@ import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
 import 'services/admin_service.dart';
 
-/// Загружает и пинит сертификат из assets
-Future<SecurityContext> _loadSecurityContext() async {
-  final data = await rootBundle.load('assets/cert/spring-server.crt');
-  final certBytes = data.buffer.asUint8List();
-
-  // Отключаем системные CA и используем только наш сертификат
-  final securityContext = SecurityContext(withTrustedRoots: false)
-    ..setTrustedCertificatesBytes(certBytes);
-
-  return securityContext;
+/// Глобальное переопределение HttpClient для принятия самоподписанных сертификатов
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
+    return client;
+  }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+  // Применяем глобальное переопределение для HttpClient
+  HttpOverrides.global = MyHttpOverrides();
 
   // Инициализация уведомлений и фоновых задач
   await _initNotifications();
@@ -67,9 +67,6 @@ void main() async {
     frequency: const Duration(days: 1),
   );
 
-  // Загружаем SecurityContext с нашим сертификатом
-  final securityContext = await _loadSecurityContext();
-
   // Настройка Dio и CookieJar
   final dio = Dio();
   final directory = await getApplicationDocumentsDirectory();
@@ -78,11 +75,13 @@ void main() async {
   );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Настраиваем Dio для использования пиннинг-клиента
+  // Переопределяем HttpClient для Dio, чтобы игнорировать ошибки SSL
   dio.httpClientAdapter = IOHttpClientAdapter(
     createHttpClient: () {
-      // Игнорируем входной параметр и создаём HttpClient с заранее загруженным контекстом
-      return HttpClient(context: securityContext);
+      final client = HttpClient();
+      client.badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+      return client;
     },
   );
 
