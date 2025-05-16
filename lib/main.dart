@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'dart:io'; // Для использования HttpClient и X509Certificate
+import 'dart:io'; // Для использования HttpClient и SecurityContext
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cookie_jar/cookie_jar.dart';
@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 // Providers
 import 'providers/auth_provider.dart';
@@ -20,7 +21,6 @@ import 'providers/auth_provider.dart';
 import 'services/product_service.dart';
 import 'services/category_service.dart';
 import 'services/order_service.dart';
-import 'services/admin_service.dart';
 
 // Screens
 import 'screens/product_detail_screen.dart';
@@ -39,39 +39,23 @@ import 'screens/admin_home_screen.dart';
 import 'screens/moderator_home_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/add_product_screen.dart';
+import 'services/admin_service.dart';
 
-/// Глобальное переопределение HttpClient для прокси Burp и принятия самоподписанных сертификатов
-class MyHttpOverrides extends HttpOverrides {
-  final String proxyHost;
-  final int proxyPort;
+/// Загружает и пинит сертификат из assets
+Future<SecurityContext> _loadSecurityContext() async {
+  final data = await rootBundle.load('assets/certs/spring-server.crt');
+  final certBytes = data.buffer.asUint8List();
 
-  MyHttpOverrides({required this.proxyHost, required this.proxyPort});
+  // Отключаем системные CA и используем только наш сертификат
+  final securityContext = SecurityContext(withTrustedRoots: false)
+    ..setTrustedCertificatesBytes(certBytes);
 
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    final HttpClient client = super.createHttpClient(context);
-    // Игнорируем ошибки сертификатов (самоподписанные)
-    client.badCertificateCallback =
-        (X509Certificate cert, String host, int port) => true;
-    // Указываем прокси для всех запросов
-    client.findProxy = (Uri uri) => 'PROXY $proxyHost:$proxyPort;';
-    return client;
-  }
+  return securityContext;
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-
-  // IP вашего ноутбука и порт Burp Suite
-  const proxyHost = '172.22.103.160';
-  const proxyPort = 8888;
-
-  // Применяем глобальное переопределение для HttpClient
-  HttpOverrides.global = MyHttpOverrides(
-    proxyHost: proxyHost,
-    proxyPort: proxyPort,
-  );
 
   // Инициализация уведомлений и фоновых задач
   await _initNotifications();
@@ -83,6 +67,9 @@ void main() async {
     frequency: const Duration(days: 1),
   );
 
+  // Загружаем SecurityContext с нашим сертификатом
+  final securityContext = await _loadSecurityContext();
+
   // Настройка Dio и CookieJar
   final dio = Dio();
   final directory = await getApplicationDocumentsDirectory();
@@ -91,16 +78,18 @@ void main() async {
   );
   dio.interceptors.add(CookieManager(cookieJar));
 
-  // Настройка Dio: используем тот же HttpClient с прокси и сертификатом
+  // Настраиваем Dio для использования пиннинг-клиента
   dio.httpClientAdapter = IOHttpClientAdapter(
-    createHttpClient: () =>
-        HttpOverrides.current!.createHttpClient(SecurityContext.defaultContext),
+    createHttpClient: () {
+      // Игнорируем входной параметр и создаём HttpClient с заранее загруженным контекстом
+      return HttpClient(context: securityContext);
+    },
   );
 
   // Провайдер аутентификации
   final authProvider = AuthProvider(dio, cookieJar);
 
-  // Интерсептор для добавления Access-token и автопродления сессии
+  // Интерсептор для добавления Access-token
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
