@@ -43,7 +43,7 @@ import 'services/admin_service.dart';
 
 /// Загружает и пинит сертификат из assets
 Future<SecurityContext> _loadSecurityContext() async {
-  final data = await rootBundle.load('assets/certs/spring-server.crt');
+  final data = await rootBundle.load('assets/cert/spring-server.crt');
   final certBytes = data.buffer.asUint8List();
 
   // Отключаем системные CA и используем только наш сертификат
