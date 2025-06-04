@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'about_screen.dart';
-import 'admin_orders_screen.dart';
 import 'profile_screen.dart';
 
 class ModeratorHomeScreen extends StatefulWidget {
@@ -14,8 +12,6 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
   int _currentPage = 0;
 
   final List<Widget> _pages = [
-    AdminOrdersScreen(),
-    AboutScreen(),
     ProfileScreen(),
   ];
 

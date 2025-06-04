@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'products_screen.dart';
+import 'package:provider/provider.dart';
+import '../services/chat_service.dart';
+import '../services/appointment_service.dart';
 import 'profile_screen.dart';
-import 'my_cart_screen.dart';
 import 'notifications_screen.dart';
-import 'my_orders_screen.dart';
+import 'main_screen.dart';
+import 'my_appointments_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,17 +16,26 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentPage = 0;
-  final List<Widget> _pages = [
-    const ProductsScreen(),
-    const MyCartScreen(),
-    const MyOrdersScreen(),
-    ProfileScreen(),
-  ];
-
-  static const Color primaryColor = Color(0xFF6A0DAD);
 
   @override
   Widget build(BuildContext context) {
+    // Получаем ChatService и AppointmentService из Provider'ов
+    final chatService = Provider.of<ChatService>(context, listen: false);
+    final appointmentService =
+        Provider.of<AppointmentService>(context, listen: false);
+
+    // Формируем список страниц с передачей нужных зависимостей
+    final List<Widget> _pages = [
+      MainScreen(),
+      // Передаём chatService в ChatPage
+      ChatPage(chatService: chatService),
+      // Передаём appointmentService в MyAppointmentsPage
+      MyAppointmentsPage(service: appointmentService),
+      ProfileScreen(),
+    ];
+
+    const Color primaryColor = Color(0xFF6A0DAD);
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
@@ -38,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                image: DecorationImage(
+                image: const DecorationImage(
                   image: AssetImage('assets/logo.png'),
                   fit: BoxFit.cover,
                 ),
@@ -46,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   BoxShadow(
                     color: Colors.black.withOpacity(0.1),
                     blurRadius: 6,
-                    offset: Offset(0, 3),
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
@@ -69,9 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationsScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
               );
             },
           ),
@@ -93,17 +103,17 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
             activeIcon: Icon(Icons.dashboard),
-            label: 'Продукты',
+            label: 'Главная страница',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart_outlined),
             activeIcon: Icon(Icons.shopping_cart),
-            label: 'Корзина',
+            label: 'ИИ Консултант',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),
             activeIcon: Icon(Icons.receipt_long),
-            label: 'Мои заказы',
+            label: 'Мои запись',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_circle_outlined),

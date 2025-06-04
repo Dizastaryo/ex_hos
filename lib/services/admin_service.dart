@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../models/user_dto.dart'; // Импортируем DTO
+import '../model/user_dto.dart'; // Импортируем DTO
 
 class UserService {
   // Берём базовый URL аутентификации из .env и дописываем путь к users
@@ -8,6 +8,26 @@ class UserService {
   final Dio _dio;
 
   UserService(this._dio);
+
+  Future<String> getUsernameById(int userId) async {
+    try {
+      final response = await _dio.get('$_baseUrl/$userId/username');
+      return response.data as String;
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
+    }
+  }
+
+  Future<List<UserDTO>> getAllDoctors() async {
+    try {
+      final response = await _dio.get('$_baseUrl/moderators');
+      return (response.data as List)
+          .map((json) => UserDTO.fromJson(json))
+          .toList();
+    } on DioException catch (e) {
+      throw Exception(_formatError(e));
+    }
+  }
 
   /// Создать модератора
   Future<String> createModerator({

@@ -12,32 +12,23 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'services/appointment_service.dart';
+import 'services/doctor_room_service.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
 
-// Services
-import 'services/product_service.dart';
-import 'services/category_service.dart';
-import 'services/order_service.dart';
+import 'services/chat_service.dart';
 
-// Screens
-import 'screens/product_detail_screen.dart';
-import 'screens/payment_screen.dart';
-import 'screens/payment_status_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/my_orders_screen.dart';
+import 'screens/main_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/support_screen.dart';
 import 'screens/auth_screen.dart';
-import 'screens/about_screen.dart';
-import 'screens/my_cart_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/reset_password_screen.dart';
 import 'screens/admin_home_screen.dart';
 import 'screens/moderator_home_screen.dart';
-import 'screens/products_screen.dart';
-import 'screens/add_product_screen.dart';
 import 'services/admin_service.dart';
 
 /// Глобальное переопределение HttpClient для принятия самоподписанных сертификатов
@@ -123,10 +114,10 @@ void main() async {
         Provider<Dio>.value(value: dio),
         Provider<CookieJar>.value(value: cookieJar),
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
-        Provider<ProductService>(create: (_) => ProductService(dio)),
         Provider<UserService>(create: (_) => UserService(dio)),
-        Provider<CategoryService>(create: (_) => CategoryService(dio)),
-        Provider<OrderService>(create: (_) => OrderService(dio)),
+        Provider<ChatService>(create: (_) => ChatService(dio)),
+        Provider<AppointmentService>(create: (_) => AppointmentService(dio)),
+        Provider<DoctorRoomService>(create: (_) => DoctorRoomService(dio)),
       ],
       child: const MyApp(),
     ),
@@ -191,15 +182,6 @@ class MyApp extends StatelessWidget {
           case '/main':
             page = const HomeScreen();
             break;
-          case '/products':
-            page = const ProductsScreen();
-            break;
-          case '/add-product':
-            page = const AddProductScreen();
-            break;
-          case '/my-cart':
-            page = const MyCartScreen();
-            break;
           case '/notifications':
             page = const NotificationsScreen();
             break;
@@ -214,27 +196,6 @@ class MyApp extends StatelessWidget {
             break;
           case '/support':
             page = SupportScreen();
-            break;
-          case '/about':
-            page = const AboutScreen();
-            break;
-          case '/product-detail':
-            final id = settings.arguments as int;
-            page = ProductDetailScreen(productId: id);
-            break;
-          case '/orders':
-            page = const MyOrdersScreen();
-            break;
-          case '/payment':
-            final args = settings.arguments as Map<String, dynamic>;
-            page = PaymentScreen(
-              orderId: args['orderId'] as int,
-              orderTotal: args['orderTotal'] as double,
-            );
-            break;
-          case '/payment-status':
-            final pid = settings.arguments as int;
-            page = PaymentStatusScreen(orderId: pid);
             break;
           default:
             page = const SplashScreen();

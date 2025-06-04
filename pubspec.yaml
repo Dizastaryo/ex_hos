@@ -14,6 +14,7 @@ dependencies:
   dio: ^5.8.0+1       # Версия Dio
   dio_cookie_manager: ^2.0.1 # Пакет для работы с cookie в Dio
   cookie_jar: ^3.0.0  
+  table_calendar: ^3.2.0
   video_player: ^2.9.2
   shared_preferences: ^2.0.13
   flutter_secure_storage: ^9.2.2

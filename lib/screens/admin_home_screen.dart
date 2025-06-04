@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'about_screen.dart';
+import 'package:provider/provider.dart';
 import 'profile_screen.dart';
 import 'admin_management_screen.dart';
+import 'admin_doctor_rooms_screen.dart';
+import '../services/admin_service.dart';
+import '../services/doctor_room_service.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({Key? key}) : super(key: key);
@@ -13,14 +16,22 @@ class AdminHomeScreen extends StatefulWidget {
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentPage = 0;
 
-  final List<Widget> _pages = [
-    UserManagementScreen(),
-    AboutScreen(),
-    ProfileScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    // Получаем зависимости через Provider
+    final userService = Provider.of<UserService>(context, listen: false);
+    final doctorRoomService =
+        Provider.of<DoctorRoomService>(context, listen: false);
+
+    final List<Widget> _pages = [
+      AdminDoctorRoomsPage(
+        userService: userService,
+        doctorRoomService: doctorRoomService,
+      ),
+      UserManagementScreen(),
+      ProfileScreen(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Панель администратора'),
@@ -45,13 +56,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt_outlined),
-            activeIcon: Icon(Icons.list_alt),
-            label: 'Пользователи',
+            icon: Icon(Icons.meeting_room_outlined),
+            activeIcon: Icon(Icons.meeting_room),
+            label: 'Кабинеты',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt_outlined),
-            activeIcon: Icon(Icons.list_alt),
+            icon: Icon(Icons.supervised_user_circle_outlined),
+            activeIcon: Icon(Icons.supervised_user_circle),
             label: 'Управление',
           ),
           BottomNavigationBarItem(
