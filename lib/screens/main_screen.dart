@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
+
 import '../services/appointment_service.dart';
 import 'doctor_rooms_page.dart';
 import 'test_rooms_page.dart';
 
 class MainScreen extends StatelessWidget {
-  final AppointmentService service = AppointmentService(Dio());
-
-  MainScreen({super.key});
+  const MainScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Получаем общий Dio из провайдера
+    final dio = Provider.of<Dio>(context, listen: false);
+    final appointmentService = AppointmentService(dio);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Запись на приём")),
       body: Padding(
@@ -24,7 +28,8 @@ class MainScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => DoctorRoomsPage(service: service),
+                    builder: (_) =>
+                        DoctorRoomsPage(service: appointmentService),
                   ),
                 );
               },
@@ -40,7 +45,7 @@ class MainScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => TestRoomsPage(service: service),
+                    builder: (_) => TestRoomsPage(service: appointmentService),
                   ),
                 );
               },
