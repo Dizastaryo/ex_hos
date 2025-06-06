@@ -53,7 +53,7 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final response = await widget.chatService.sendMessage(text);
-      final answer = response['text'] ?? 'Нет ответа';
+      final answer = response['diagnosis'] ?? 'Нет ответа';
       setState(() {
         _messages.add({'sender': 'assistant', 'text': answer});
       });
