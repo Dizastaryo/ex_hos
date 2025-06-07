@@ -1,4 +1,3 @@
-// test_rooms_page.dart
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../services/appointment_service.dart';
@@ -30,7 +29,7 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
       lastDate: today.add(const Duration(days: 30)),
       builder: (context, child) => Theme(
         data: ThemeData.light().copyWith(
-          colorScheme: ColorScheme.light(
+          colorScheme: const ColorScheme.light(
             primary: Colors.deepOrange,
             onPrimary: Colors.white,
             surface: Colors.white,
@@ -67,7 +66,7 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text("Ошибка: \${snapshot.error}"));
+            return Center(child: Text("Ошибка: ${snapshot.error}"));
           }
 
           final rooms = snapshot.data!;
@@ -77,9 +76,11 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
               final room = rooms[index];
               return ListTile(
                 title: Text(
-                    "Кабинет №\${room['room_number']} — \${room['specialization']}"),
+                  "Кабинет №${room['room_number']} — ${room['specialization']}",
+                ),
                 subtitle: Text(
-                    "Время: \${room['start_time']} - \${room['end_time']}"),
+                  "Время: ${room['start_time']} - ${room['end_time']}",
+                ),
                 trailing: const Icon(Icons.calendar_today),
                 onTap: () => _selectDateAndNavigate(room['room_number']),
               );

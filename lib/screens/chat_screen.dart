@@ -26,19 +26,33 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadHistory() async {
     final history = await widget.chatService.getUserChatHistory();
+    // Переименовываем поле message → text
+    final formatted = history.map((msg) {
+      return {
+        'sender': msg['sender'],
+        'text': msg['message'],
+        'timestamp': msg['timestamp'],
+      };
+    }).toList();
+    // При желании можно раскомментировать сортировку по времени:
+    // formatted.sort((a, b) =>
+    //   DateTime.parse(a['timestamp']).compareTo(DateTime.parse(b['timestamp'])));
     setState(() {
       _messages.clear();
-      _messages.addAll(history.cast<Map<String, dynamic>>());
+      _messages.addAll(formatted);
     });
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -55,11 +69,11 @@ class _ChatPageState extends State<ChatPage> {
       final response = await widget.chatService.sendMessage(text);
       final answer = response['diagnosis'] ?? 'Нет ответа';
       setState(() {
-        _messages.add({'sender': 'assistant', 'text': answer});
+        _messages.add({'sender': 'model', 'text': answer});
       });
     } catch (e) {
       setState(() {
-        _messages.add({'sender': 'assistant', 'text': 'Ошибка: $e'});
+        _messages.add({'sender': 'model', 'text': 'Ошибка: $e'});
       });
     } finally {
       setState(() => _isLoading = false);
@@ -82,13 +96,11 @@ class _ChatPageState extends State<ChatPage> {
     try {
       final result = await widget.chatService.predictImage(file);
       setState(() {
-        _messages
-            .add({'sender': 'assistant', 'text': 'Диагноз по фото: $result'});
+        _messages.add({'sender': 'model', 'text': 'Диагноз по фото: $result'});
       });
     } catch (e) {
       setState(() {
-        _messages.add(
-            {'sender': 'assistant', 'text': 'Ошибка при распознавании: $e'});
+        _messages.add({'sender': 'model', 'text': 'Ошибка при распознавании: $e'});
       });
     } finally {
       setState(() => _isLoading = false);
@@ -97,7 +109,11 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessage(Map<String, dynamic> message) {
-    final isUser = message['sender'] == 'user';
+    final sender = message['sender'] as String;
+    final rawText = message['text'] as String;
+
+    // Выбираем выравнивание и префикс для разных отправителей
+    final isUser = sender == 'user';
     final alignment = isUser ? Alignment.centerRight : Alignment.centerLeft;
     final color = isUser ? Colors.teal[200] : Colors.grey[300];
     final radius = BorderRadius.only(
@@ -107,13 +123,22 @@ class _ChatPageState extends State<ChatPage> {
       bottomRight: Radius.circular(isUser ? 0 : 12),
     );
 
+    String displayText;
+    if (sender == 'model') {
+      displayText = 'ИИ: $rawText';
+    } else if (sender == 'moderator') {
+      displayText = 'Доктор: $rawText';
+    } else {
+      displayText = rawText;
+    }
+
     return Align(
       alignment: alignment,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
         decoration: BoxDecoration(color: color, borderRadius: radius),
-        child: Text(message['text'], style: const TextStyle(fontSize: 16)),
+        child: Text(displayText, style: const TextStyle(fontSize: 16)),
       ),
     );
   }

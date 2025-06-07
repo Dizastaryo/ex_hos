@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/appointment_service.dart';
+import '../services/admin_service.dart';
 import 'profile_screen.dart';
+import 'doctor_appointments_screen.dart';
 
 class ModeratorHomeScreen extends StatefulWidget {
   const ModeratorHomeScreen({Key? key}) : super(key: key);
@@ -11,12 +15,20 @@ class ModeratorHomeScreen extends StatefulWidget {
 class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
   int _currentPage = 0;
 
-  final List<Widget> _pages = [
-    ProfileScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final appointmentService =
+        Provider.of<AppointmentService>(context, listen: false);
+    final userService = Provider.of<UserService>(context, listen: false);
+
+    final List<Widget> _pages = [
+      DoctorAppointmentsPage(
+        appointmentService: appointmentService,
+        userService: userService,
+      ),
+      ProfileScreen(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Панель модератора'),
@@ -43,17 +55,12 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shop_outlined),
             activeIcon: Icon(Icons.shop),
-            label: 'Заказы',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt_outlined),
-            activeIcon: Icon(Icons.list_alt),
-            label: 'Управление',
+            label: 'Записы',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.account_circle_outlined),
             activeIcon: Icon(Icons.account_circle),
-            label: 'Профил',
+            label: 'Профиль',
           ),
         ],
       ),

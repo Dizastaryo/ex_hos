@@ -18,10 +18,13 @@ class DoctorRoomService {
   }
 
   /// Назначить врача на кабинет
-  Future<Map<String, dynamic>> assignDoctorToRoom(int roomNumber) async {
+  Future<Map<String, dynamic>> assignDoctorToRoom(
+      int roomNumber, int doctorId) async {
     try {
-      final response =
-          await _dio.post('$_baseUrl/doctor_rooms/$roomNumber/assign');
+      final response = await _dio.post(
+        '$_baseUrl/doctor_rooms/$roomNumber/assign',
+        data: {'doctor_id': doctorId},
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw _formatError(e);
@@ -29,10 +32,13 @@ class DoctorRoomService {
   }
 
   /// Снять врача с кабинета
-  Future<Map<String, dynamic>> unassignDoctorFromRoom(int roomNumber) async {
+  Future<Map<String, dynamic>> unassignDoctorFromRoom(
+      int roomNumber, int doctorId) async {
     try {
-      final response =
-          await _dio.post('$_baseUrl/doctor_rooms/$roomNumber/unassign');
+      final response = await _dio.post(
+        '$_baseUrl/doctor_rooms/$roomNumber/unassign',
+        data: {'doctor_id': doctorId},
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw _formatError(e);

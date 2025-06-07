@@ -90,6 +90,16 @@ class AppointmentService {
         : 'Сетевая ошибка: ${e.message}';
   }
 
+  Future<List<dynamic>> getDoctorAppointments() async {
+    try {
+      final response =
+          await _dio.get('$_baseUrl/appointments/doctor/appointments');
+      return response.data as List<dynamic>;
+    } on DioException catch (e) {
+      throw _formatError(e);
+    }
+  }
+
   Future<Map<String, dynamic>> setUserCharacteristics({
     required String gender,
     required int height,

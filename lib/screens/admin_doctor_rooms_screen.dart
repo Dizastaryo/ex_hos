@@ -55,7 +55,7 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
 
   Future<void> _assignDoctor(int roomNumber, int doctorId) async {
     try {
-      await widget.doctorRoomService.assignDoctorToRoom(roomNumber);
+      await widget.doctorRoomService.assignDoctorToRoom(roomNumber, doctorId);
       await _loadData();
     } catch (e) {
       ScaffoldMessenger.of(context)
@@ -63,9 +63,10 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
     }
   }
 
-  Future<void> _unassignDoctor(int roomNumber) async {
+  Future<void> _unassignDoctor(int roomNumber, int doctorId) async {
     try {
-      await widget.doctorRoomService.unassignDoctorFromRoom(roomNumber);
+      await widget.doctorRoomService
+          .unassignDoctorFromRoom(roomNumber, doctorId);
       await _loadData();
     } catch (e) {
       ScaffoldMessenger.of(context)
@@ -101,8 +102,10 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
                         Text('Рабочие дни: ${room['work_days'] ?? '—'}'),
                         Text(
                             'Работа: ${room['start_time']}–${room['end_time']}'),
-                        Text(
-                            'Обед: ${room['lunch_start']}–${room['lunch_end']}'),
+                        if (room['lunch_start'] != null &&
+                            room['lunch_end'] != null)
+                          Text(
+                              'Обед: ${room['lunch_start']}–${room['lunch_end']}'),
                         const SizedBox(height: 8),
                         username != null
                             ? Row(
@@ -111,8 +114,8 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
                                 children: [
                                   Text('Назначен: $username'),
                                   ElevatedButton(
-                                    onPressed: () =>
-                                        _unassignDoctor(roomNumber),
+                                    onPressed: () => _unassignDoctor(
+                                        roomNumber, room['user_id']),
                                     child: const Text('Снять врача'),
                                   )
                                 ],

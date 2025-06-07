@@ -13,7 +13,7 @@ class ChatService {
     try {
       final response = await _dio.post(
         '$_baseUrl/chat/diagnose',
-        data: {'text': text},
+        data: {'diagnosis': text},
       );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
@@ -32,7 +32,7 @@ class ChatService {
   }
 
   /// Получить историю чата другого пользователя (для модератора)
-  Future<List<dynamic>> getChatHistoryForUser(int userId) async {
+  Future<List<dynamic>> getChatHistoryModerator(int userId) async {
     try {
       final response =
           await _dio.get('$_baseUrl/chat/moderator/history/$userId');
