@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../model/appointment.dart';
 
 class AppointmentService {
   final String _baseUrl = dotenv.env['API_BASE_URL']!;
@@ -90,14 +91,13 @@ class AppointmentService {
         : 'Сетевая ошибка: ${e.message}';
   }
 
-  Future<List<dynamic>> getDoctorAppointments() async {
-    try {
-      final response =
-          await _dio.get('$_baseUrl/appointments/doctor/appointments');
-      return response.data as List<dynamic>;
-    } on DioException catch (e) {
-      throw _formatError(e);
-    }
+  Future<List<Appointment>> getDoctorAppointments() async {
+    final response =
+        await _dio.get('$_baseUrl/appointments/doctor/appointments');
+    final data = response.data as List<dynamic>;
+    return data
+        .map((e) => Appointment.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Map<String, dynamic>> setUserCharacteristics({

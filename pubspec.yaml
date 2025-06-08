@@ -33,6 +33,7 @@ dependencies:
   permission_handler: ^11.3.1
   flutter_local_notifications: ^18.0.1
   encrypt: ^5.0.1
+  intl: ^0.18.1
 
 dev_dependencies:
   flutter_test:
