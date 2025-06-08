@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/appointment_service.dart';
 import '../services/admin_service.dart';
+import '../services/chat_service.dart';
 import 'profile_screen.dart';
 import 'doctor_appointments_screen.dart';
 
@@ -20,11 +21,13 @@ class _ModeratorHomeScreenState extends State<ModeratorHomeScreen> {
     final appointmentService =
         Provider.of<AppointmentService>(context, listen: false);
     final userService = Provider.of<UserService>(context, listen: false);
+    final chatService = Provider.of<ChatService>(context, listen: false);
 
     final List<Widget> _pages = [
       DoctorAppointmentsPage(
         appointmentService: appointmentService,
         userService: userService,
+        chatService: chatService,
       ),
       ProfileScreen(),
     ];

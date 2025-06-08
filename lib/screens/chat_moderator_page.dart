@@ -5,11 +5,13 @@ import '../services/chat_service.dart';
 class ModeratorChatPage extends StatefulWidget {
   final int userId;
   final String patientName;
+  final ChatService chatService;
 
   const ModeratorChatPage({
     Key? key,
     required this.userId,
     required this.patientName,
+    required this.chatService,
   }) : super(key: key);
 
   @override
@@ -17,7 +19,7 @@ class ModeratorChatPage extends StatefulWidget {
 }
 
 class _ModeratorChatPageState extends State<ModeratorChatPage> {
-  final ChatService _chatService = ChatService(Dio());
+  late final ChatService _chatService;
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   late Future<List<dynamic>> _chatFuture;
@@ -26,6 +28,7 @@ class _ModeratorChatPageState extends State<ModeratorChatPage> {
   @override
   void initState() {
     super.initState();
+    _chatService = widget.chatService;
     _chatFuture = _chatService.getChatHistoryModerator(widget.userId);
   }
 

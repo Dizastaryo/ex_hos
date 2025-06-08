@@ -3,16 +3,19 @@ import 'package:intl/intl.dart';
 import '../model/appointment.dart';
 import '../services/appointment_service.dart';
 import '../services/admin_service.dart';
+import '../services/chat_service.dart';
 import 'chat_moderator_page.dart';
 
 class DoctorAppointmentsPage extends StatefulWidget {
   final AppointmentService appointmentService;
   final UserService userService;
+  final ChatService chatService;
 
   const DoctorAppointmentsPage({
     Key? key,
     required this.appointmentService,
     required this.userService,
+    required this.chatService,
   }) : super(key: key);
 
   @override
@@ -108,6 +111,7 @@ class _DoctorAppointmentsPageState extends State<DoctorAppointmentsPage> {
                           builder: (_) => ModeratorChatPage(
                             userId: appointment.patientId,
                             patientName: item.patientName,
+                            chatService: widget.chatService,
                           ),
                         ),
                       );
