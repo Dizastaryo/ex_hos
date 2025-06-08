@@ -16,7 +16,10 @@ class MainScreen extends StatelessWidget {
     final appointmentService = AppointmentService(dio);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Запись на приём")),
+      appBar: AppBar(
+        title: const Text("Запись на приём"),
+        automaticallyImplyLeading: false,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(

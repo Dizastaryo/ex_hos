@@ -65,7 +65,10 @@ class _DoctorAppointmentsPageState extends State<DoctorAppointmentsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Мои пациенты")),
+      appBar: AppBar(
+        title: const Text("Мои пациенты"),
+        automaticallyImplyLeading: false,
+      ),
       body: FutureBuilder<List<_AppointmentWithPatientName>>(
         future: _appointmentsWithNamesFuture,
         builder: (context, snapshot) {

@@ -48,7 +48,10 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Мои записи')),
+      appBar: AppBar(
+        title: const Text('Мои записи'),
+        automaticallyImplyLeading: false,
+      ),
       body: FutureBuilder<List<dynamic>>(
         future: _appointmentsFuture,
         builder: (context, snapshot) {

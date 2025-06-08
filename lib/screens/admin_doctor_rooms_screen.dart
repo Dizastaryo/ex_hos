@@ -77,7 +77,10 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Кабинеты и врачи')),
+      appBar: AppBar(
+        title: const Text('Кабинеты и врачи'),
+        automaticallyImplyLeading: false,
+      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(

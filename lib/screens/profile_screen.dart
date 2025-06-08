@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/appointment_service.dart';
 
 class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final appointmentService =
+        Provider.of<AppointmentService>(context, listen: false);
     final currentUser = authProvider.currentUser;
 
     // Извлекаем только username и email из currentUser
@@ -73,6 +76,19 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  // Новая секция: Характеристика
+                  ListTile(
+                    leading: Icon(Icons.insert_chart_outlined,
+                        color: Color(0xFF6A0DAD)),
+                    title: Text(
+                      'Характеристика',
+                      style: TextStyle(fontSize: 16, color: Colors.black),
+                    ),
+                    trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () =>
+                        _showCharacteristicsDialog(context, appointmentService),
+                  ),
+                  const Divider(),
                   ListTile(
                     leading: Icon(Icons.privacy_tip_outlined,
                         color: Color(0xFF6A0DAD)), // основной цвет
@@ -135,6 +151,77 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
+    );
+  }
+
+  void _showCharacteristicsDialog(
+      BuildContext context, AppointmentService service) {
+    final _formKey = GlobalKey<FormState>();
+    String? gender;
+    final heightController = TextEditingController();
+    final weightController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Характеристика'),
+        content: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                decoration: InputDecoration(labelText: 'Пол'),
+                items: ['male', 'female']
+                    .map((g) => DropdownMenuItem(value: g, child: Text(g)))
+                    .toList(),
+                onChanged: (v) => gender = v,
+                validator: (v) => v == null ? 'Выберите пол' : null,
+              ),
+              TextFormField(
+                controller: heightController,
+                decoration: InputDecoration(labelText: 'Рост (см)'),
+                keyboardType: TextInputType.number,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Укажите рост' : null,
+              ),
+              TextFormField(
+                controller: weightController,
+                decoration: InputDecoration(labelText: 'Вес (кг)'),
+                keyboardType: TextInputType.number,
+                validator: (v) => v == null || v.isEmpty ? 'Укажите вес' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                Navigator.of(ctx).pop();
+                try {
+                  await service.setUserCharacteristics(
+                    gender: gender!,
+                    height: int.parse(heightController.text),
+                    weight: int.parse(weightController.text),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Характеристики сохранены')),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Ошибка: $e')),
+                  );
+                }
+              }
+            },
+            child: Text('Сохранить'),
+          ),
+        ],
+      ),
     );
   }
 }
