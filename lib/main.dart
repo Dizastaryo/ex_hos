@@ -5,6 +5,7 @@ import 'package:dio/io.dart';
 import 'dart:io'; // Для использования HttpClient и X509Certificate
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -169,6 +170,19 @@ class MyApp extends StatelessWidget {
         fontFamily: 'Montserrat',
         useMaterial3: true,
       ),
+
+      // ✅ Добавлено: локализация
+      supportedLocales: const [
+        Locale('ru'), // Русский
+        Locale('en'), // Английский
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      locale: const Locale('ru'), // По умолчанию — русский
+
       initialRoute: '/splash',
       onGenerateRoute: (settings) {
         Widget page;

@@ -1,6 +1,6 @@
 name: aidyn_market
 description: "A warehouse storage Flutter app for Amanzat."
-publish_to: 'none'  # Уберите эту строку, если хотите опубликовать на pub.dev
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
@@ -9,12 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:  # ✅ Правильный встроенный пакет для локализации
+    sdk: flutter
+
   cupertino_icons: ^1.0.8
   http: ^1.2.2
-  dio: ^5.8.0+1       # Версия Dio
-  dio_cookie_manager: ^2.0.1 # Пакет для работы с cookie в Dio
-  cookie_jar: ^3.0.0  
-  table_calendar: ^3.2.0
+  dio: ^5.8.0+1
+  dio_cookie_manager: ^2.0.1
+  cookie_jar: ^3.0.0
+  table_calendar: ^3.0.9
   video_player: ^2.9.2
   shared_preferences: ^2.0.13
   flutter_secure_storage: ^9.2.2
@@ -33,7 +36,7 @@ dependencies:
   permission_handler: ^11.3.1
   flutter_local_notifications: ^18.0.1
   encrypt: ^5.0.1
-  intl: ^0.18.1
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
@@ -44,12 +47,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Укажите папку с изображениями
   assets:
     - assets/logo.png
     - assets/animation/
     - .env
-    
 
 flutter_launcher_icons:
   android: true
