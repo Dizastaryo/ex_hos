@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:  # ✅ встроенный пакет локализации
+  flutter_localizations:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
@@ -36,7 +36,7 @@ dependencies:
   permission_handler: ^11.3.1
   flutter_local_notifications: ^18.0.1
   encrypt: ^5.0.1
-  intl: ^0.20.2  # <-- изменил версию на 0.20.2 для совместимости с flutter_localizations
+  intl: 0.20.2
 
 dev_dependencies:
   flutter_test:
