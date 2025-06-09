@@ -1,4 +1,3 @@
-// chat_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,7 +6,7 @@ import '../services/chat_service.dart';
 class ChatPage extends StatefulWidget {
   final ChatService chatService;
 
-  const ChatPage({super.key, required this.chatService});
+  const ChatPage({Key? key, required this.chatService}) : super(key: key);
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -34,13 +33,11 @@ class _ChatPageState extends State<ChatPage> {
               'timestamp': msg['timestamp'],
             })
         .toList();
-
     setState(() {
       _messages
         ..clear()
         ..addAll(formatted);
     });
-
     _scrollToBottom();
   }
 
@@ -58,7 +55,6 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
-
     setState(() {
       _messages.add({'sender': 'user', 'text': text});
       _isLoading = true;
@@ -69,13 +65,9 @@ class _ChatPageState extends State<ChatPage> {
     try {
       final response = await widget.chatService.sendMessage(text);
       final answer = response['diagnosis'] ?? 'Нет ответа';
-      setState(() {
-        _messages.add({'sender': 'model', 'text': answer});
-      });
+      setState(() => _messages.add({'sender': 'model', 'text': answer}));
     } catch (e) {
-      setState(() {
-        _messages.add({'sender': 'model', 'text': 'Ошибка: $e'});
-      });
+      setState(() => _messages.add({'sender': 'model', 'text': 'Ошибка: \$e'}));
     } finally {
       setState(() => _isLoading = false);
       _scrollToBottom();
@@ -96,13 +88,11 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final result = await widget.chatService.predictImage(file);
-      setState(() {
-        _messages.add({'sender': 'model', 'text': 'Диагноз по фото: $result'});
-      });
+      setState(() => _messages
+          .add({'sender': 'model', 'text': 'Диагноз по фото: \$result'}));
     } catch (e) {
-      setState(() {
-        _messages.add({'sender': 'model', 'text': 'Ошибка: $e'});
-      });
+      setState(() => _messages
+          .add({'sender': 'model', 'text': 'Ошибка при распознавании: \$e'}));
     } finally {
       setState(() => _isLoading = false);
       _scrollToBottom();
@@ -110,30 +100,38 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessage(Map<String, dynamic> message) {
-    final sender = message['sender'] ?? '';
-    final text = message['text'] ?? '';
+    final sender = message['sender'] as String;
+    final rawText = message['text'] as String;
     final isUser = sender == 'user';
+    final color = isUser ? const Color(0xFF30D5C8) : Colors.grey.shade200;
+    final textColor = isUser ? Colors.white : Colors.black87;
+    final alignment = isUser ? Alignment.centerRight : Alignment.centerLeft;
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(16),
+      topRight: const Radius.circular(16),
+      bottomLeft: Radius.circular(isUser ? 16 : 4),
+      bottomRight: Radius.circular(isUser ? 4 : 16),
+    );
 
-    final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
-    final color = isUser
-        ? const Color(0xFF30D5C8).withOpacity(0.2)
-        : Colors.grey.shade200;
-
-    String displayText = text;
-    if (sender == 'model') displayText = 'ИИ: $text';
-    if (sender == 'moderator') displayText = 'Доктор: $text';
+    String displayText;
+    if (sender == 'model') {
+      displayText = 'ИИ: \$rawText';
+    } else if (sender == 'moderator') {
+      displayText = 'Доктор: \$rawText';
+    } else {
+      displayText = rawText;
+    }
 
     return Align(
-      alignment: align,
-      child: Card(
-        color: color,
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 2,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(displayText, style: const TextStyle(fontSize: 16)),
-        ),
+      alignment: alignment,
+      child: Container(
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(color: color, borderRadius: radius),
+        child:
+            Text(displayText, style: TextStyle(fontSize: 16, color: textColor)),
       ),
     );
   }
@@ -142,47 +140,73 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Консультация ИИ'),
-        automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFF30D5C8),
+        title: const Text('Чат с диагностикой'),
+        centerTitle: true,
+        elevation: 2,
       ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
+              padding: const EdgeInsets.symmetric(vertical: 10),
               itemCount: _messages.length,
               itemBuilder: (context, index) => _buildMessage(_messages[index]),
             ),
           ),
           if (_isLoading)
             const Padding(
-                padding: EdgeInsets.all(8), child: CircularProgressIndicator()),
+              padding: EdgeInsets.only(bottom: 8),
+              child: CircularProgressIndicator(color: Color(0xFF30D5C8)),
+            ),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 5,
+                  ),
+                ],
+              ),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.image, color: Color(0xFF30D5C8)),
+                    icon: const Icon(Icons.image),
+                    color: const Color(0xFF30D5C8),
                     onPressed: _sendImage,
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: 'Напишите сообщение...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
                         filled: true,
                         fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 0),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
+                      onSubmitted: _sendMessage,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Color(0xFF30D5C8)),
-                    onPressed: () => _sendMessage(_controller.text),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: const Color(0xFF30D5C8),
+                    child: IconButton(
+                      icon: const Icon(Icons.send),
+                      color: Colors.white,
+                      onPressed: () => _sendMessage(_controller.text),
+                    ),
                   ),
                 ],
               ),

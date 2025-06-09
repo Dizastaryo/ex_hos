@@ -8,10 +8,10 @@ class AdminDoctorRoomsPage extends StatefulWidget {
   final DoctorRoomService doctorRoomService;
 
   const AdminDoctorRoomsPage({
-    super.key,
+    Key? key,
     required this.userService,
     required this.doctorRoomService,
-  });
+  }) : super(key: key);
 
   @override
   State<AdminDoctorRoomsPage> createState() => _AdminDoctorRoomsPageState();
@@ -22,8 +22,6 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
   List<UserDTO> doctors = [];
   bool isLoading = true;
 
-  final Color primaryColor = const Color(0xFF30D5C8);
-
   @override
   void initState() {
     super.initState();
@@ -31,27 +29,26 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
   }
 
   Future<void> _loadData() async {
+    setState(() => isLoading = true);
     try {
       final fetchedRooms = await widget.doctorRoomService.getDoctorRooms();
       final fetchedDoctors = await widget.userService.getAllDoctors();
-
       for (var room in fetchedRooms) {
         final userId = room['user_id'];
         if (userId != null) {
-          final username = await widget.userService.getUsernameById(userId);
-          room['username'] = username;
+          room['username'] = await widget.userService.getUsernameById(userId);
         }
       }
-
       setState(() {
         rooms = fetchedRooms;
         doctors = fetchedDoctors;
-        isLoading = false;
       });
     } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка загрузки: \$e')),
+      );
+    } finally {
       setState(() => isLoading = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка загрузки: $e')));
     }
   }
 
@@ -60,8 +57,9 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
       await widget.doctorRoomService.assignDoctorToRoom(roomNumber, doctorId);
       await _loadData();
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка назначения: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка назначения: \$e')),
+      );
     }
   }
 
@@ -71,8 +69,9 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
           .unassignDoctorFromRoom(roomNumber, doctorId);
       await _loadData();
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Ошибка снятия: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка снятия: \$e')),
+      );
     }
   }
 
@@ -80,107 +79,135 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFF30D5C8),
         title: const Text('Кабинеты и врачи'),
-        backgroundColor: primaryColor,
-        automaticallyImplyLeading: false,
-        foregroundColor: Colors.white,
         elevation: 2,
+        centerTitle: true,
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: rooms.length,
-              itemBuilder: (context, index) {
-                final room = rooms[index];
-                final roomNumber = room['room_number'];
-                final username = room['username'];
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF30D5C8)))
+          : RefreshIndicator(
+              color: const Color(0xFF30D5C8),
+              onRefresh: _loadData,
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: rooms.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final room = rooms[index];
+                  final roomNumber = room['room_number'];
+                  final username = room['username'];
+                  final specialization = room['specialization'] ?? '—';
+                  final workDays = room['work_days'] ?? '—';
+                  final startTime = room['start_time'];
+                  final endTime = room['end_time'];
+                  final lunchStart = room['lunch_start'];
+                  final lunchEnd = room['lunch_end'];
 
-                return Card(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                  elevation: 3,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Кабинет №$roomNumber',
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Text('Специализация: ${room['specialization'] ?? '—'}'),
-                        Text('Рабочие дни: ${room['work_days'] ?? '—'}'),
-                        Text(
-                            'Работа: ${room['start_time']}–${room['end_time']}'),
-                        if (room['lunch_start'] != null &&
-                            room['lunch_end'] != null)
-                          Text(
-                              'Обед: ${room['lunch_start']}–${room['lunch_end']}'),
-                        const SizedBox(height: 12),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        username != null
-                            ? Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('Назначен: $username',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w500)),
-                                  OutlinedButton.icon(
+                  return Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.meeting_room,
+                                  size: 28, color: Color(0xFF30D5C8)),
+                              const SizedBox(width: 8),
+                              Text('Кабинет №$roomNumber',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey[800])),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: [
+                              _InfoChip(label: 'Спец.: $specialization'),
+                              _InfoChip(label: 'Дни: $workDays'),
+                              _InfoChip(label: 'Время: \$startTime–\$endTime'),
+                              if (lunchStart != null && lunchEnd != null)
+                                _InfoChip(
+                                    label: 'Обед: \$lunchStart–\$lunchEnd'),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          username != null
+                              ? ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(Icons.person,
+                                      color: Color(0xFF30D5C8)),
+                                  title: Text('Назначен: \$username'),
+                                  trailing: TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Color(0xFF30D5C8),
+                                    ),
                                     onPressed: () => _unassignDoctor(
                                         roomNumber, room['user_id']),
-                                    icon: const Icon(Icons.person_remove),
-                                    label: const Text('Снять врача'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.redAccent,
-                                      side: const BorderSide(
-                                          color: Colors.redAccent),
-                                    ),
+                                    icon: Icon(Icons.remove_circle_outline),
+                                    label: Text('Снять'),
                                   ),
-                                ],
-                              )
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Врач не назначен',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w500)),
-                                  const SizedBox(height: 8),
-                                  DropdownButtonFormField<int>(
-                                    decoration: InputDecoration(
-                                      labelText: 'Выберите врача',
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Врач не назначен',
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey[700])),
+                                    const SizedBox(height: 8),
+                                    DropdownButtonFormField<int>(
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide:
-                                            BorderSide(color: primaryColor),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
+                                      hint: Text('Выберите врача'),
+                                      items: doctors.map((doctor) {
+                                        return DropdownMenuItem<int>(
+                                          value: doctor.id,
+                                          child: Text(doctor.username),
+                                        );
+                                      }).toList(),
+                                      onChanged: (doctorId) {
+                                        if (doctorId != null) {
+                                          _assignDoctor(roomNumber, doctorId);
+                                        }
+                                      },
                                     ),
-                                    items: doctors.map((doctor) {
-                                      return DropdownMenuItem<int>(
-                                        value: doctor.id,
-                                        child: Text(doctor.username),
-                                      );
-                                    }).toList(),
-                                    onChanged: (doctorId) {
-                                      if (doctorId != null) {
-                                        _assignDoctor(roomNumber, doctorId);
-                                      }
-                                    },
-                                  )
-                                ],
-                              )
-                      ],
+                                  ],
+                                ),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final String label;
+  const _InfoChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      backgroundColor: Colors.grey[200],
+      label: Text(label, style: TextStyle(fontSize: 14)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 }
