@@ -1,3 +1,4 @@
+// chat_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,21 +27,20 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _loadHistory() async {
     final history = await widget.chatService.getUserChatHistory();
-    // Переименовываем поле message → text
-    final formatted = history.map((msg) {
-      return {
-        'sender': msg['sender'],
-        'text': msg['message'],
-        'timestamp': msg['timestamp'],
-      };
-    }).toList();
-    // При желании можно раскомментировать сортировку по времени:
-    // formatted.sort((a, b) =>
-    //   DateTime.parse(a['timestamp']).compareTo(DateTime.parse(b['timestamp'])));
+    final formatted = history
+        .map((msg) => {
+              'sender': msg['sender'],
+              'text': msg['message'],
+              'timestamp': msg['timestamp'],
+            })
+        .toList();
+
     setState(() {
-      _messages.clear();
-      _messages.addAll(formatted);
+      _messages
+        ..clear()
+        ..addAll(formatted);
     });
+
     _scrollToBottom();
   }
 
@@ -58,6 +58,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+
     setState(() {
       _messages.add({'sender': 'user', 'text': text});
       _isLoading = true;
@@ -100,7 +101,7 @@ class _ChatPageState extends State<ChatPage> {
       });
     } catch (e) {
       setState(() {
-        _messages.add({'sender': 'model', 'text': 'Ошибка при распознавании: $e'});
+        _messages.add({'sender': 'model', 'text': 'Ошибка: $e'});
       });
     } finally {
       setState(() => _isLoading = false);
@@ -109,36 +110,30 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildMessage(Map<String, dynamic> message) {
-    final sender = message['sender'] as String;
-    final rawText = message['text'] as String;
-
-    // Выбираем выравнивание и префикс для разных отправителей
+    final sender = message['sender'] ?? '';
+    final text = message['text'] ?? '';
     final isUser = sender == 'user';
-    final alignment = isUser ? Alignment.centerRight : Alignment.centerLeft;
-    final color = isUser ? Colors.teal[200] : Colors.grey[300];
-    final radius = BorderRadius.only(
-      topLeft: const Radius.circular(12),
-      topRight: const Radius.circular(12),
-      bottomLeft: Radius.circular(isUser ? 12 : 0),
-      bottomRight: Radius.circular(isUser ? 0 : 12),
-    );
 
-    String displayText;
-    if (sender == 'model') {
-      displayText = 'ИИ: $rawText';
-    } else if (sender == 'moderator') {
-      displayText = 'Доктор: $rawText';
-    } else {
-      displayText = rawText;
-    }
+    final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
+    final color = isUser
+        ? const Color(0xFF30D5C8).withOpacity(0.2)
+        : Colors.grey.shade200;
+
+    String displayText = text;
+    if (sender == 'model') displayText = 'ИИ: $text';
+    if (sender == 'moderator') displayText = 'Доктор: $text';
 
     return Align(
-      alignment: alignment,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(color: color, borderRadius: radius),
-        child: Text(displayText, style: const TextStyle(fontSize: 16)),
+      alignment: align,
+      child: Card(
+        color: color,
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(displayText, style: const TextStyle(fontSize: 16)),
+        ),
       ),
     );
   }
@@ -146,43 +141,47 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Чат с диагностикой')),
+      appBar: AppBar(
+        title: const Text('Консультация ИИ'),
+        automaticallyImplyLeading: false,
+        backgroundColor: const Color(0xFF30D5C8),
+      ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.symmetric(vertical: 10),
               itemCount: _messages.length,
               itemBuilder: (context, index) => _buildMessage(_messages[index]),
             ),
           ),
           if (_isLoading)
             const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
+                padding: EdgeInsets.all(8), child: CircularProgressIndicator()),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.image),
+                    icon: const Icon(Icons.image, color: Color(0xFF30D5C8)),
                     onPressed: _sendImage,
                   ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Напишите сообщение...',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[100],
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.send),
+                    icon: const Icon(Icons.send, color: Color(0xFF30D5C8)),
                     onPressed: () => _sendMessage(_controller.text),
                   ),
                 ],

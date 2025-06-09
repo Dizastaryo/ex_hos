@@ -13,6 +13,8 @@ class MyAppointmentsPage extends StatefulWidget {
 class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
   late Future<List<dynamic>> _appointmentsFuture;
 
+  final Color primaryColor = const Color(0xFF30D5C8);
+
   @override
   void initState() {
     super.initState();
@@ -33,7 +35,7 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
         ),
       );
       setState(() {
-        _loadAppointments(); // Обновляем список
+        _loadAppointments();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -50,7 +52,10 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Мои записи'),
+        backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       body: FutureBuilder<List<dynamic>>(
         future: _appointmentsFuture,
@@ -66,7 +71,12 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
           final appointments = snapshot.data ?? [];
 
           if (appointments.isEmpty) {
-            return const Center(child: Text('Пока нету записей'));
+            return const Center(
+              child: Text(
+                'Пока нет записей',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            );
           }
 
           return ListView.builder(
@@ -80,40 +90,78 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage> {
                   "${appointmentTime.toLocal().toString().replaceFirst('T', ' ').substring(0, 16)}";
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: ListTile(
-                  title: Text(
-                      'Кабинет №${appointment['room_number']} — ${appointment['specialization']}'),
-                  subtitle: Text('Время: $formattedTime'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.red),
-                    tooltip: 'Отменить запись',
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Отмена записи'),
-                          content: const Text(
-                              'Вы уверены, что хотите отменить запись?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('Нет'),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).pop();
-                                _cancelAppointment(appointment['id']);
-                              },
-                              child: const Text('Да'),
-                            ),
-                          ],
+                elevation: 3,
+                margin: const EdgeInsets.only(bottom: 14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 16.0, horizontal: 20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Кабинет №${appointment['room_number']}',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        appointment['specialization'],
+                        style: const TextStyle(
+                          color: Colors.black54,
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Время: $formattedTime',
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.cancel, color: Colors.red),
+                          label: const Text(
+                            'Отменить',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Отмена записи'),
+                                content: const Text(
+                                    'Вы уверены, что хотите отменить запись?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    child: const Text('Нет'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                      _cancelAppointment(appointment['id']);
+                                    },
+                                    child: Text(
+                                      'Да',
+                                      style: TextStyle(color: primaryColor),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      )
+                    ],
                   ),
                 ),
               );

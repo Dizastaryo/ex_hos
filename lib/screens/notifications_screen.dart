@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+// Основной цвет
+const Color primaryColor = Color(0xFF30D5C8);
+
 // Модель уведомлений
 class NotificationItem {
   final String title;
@@ -23,9 +26,11 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final List<NotificationItem> notifications = [
     NotificationItem(
-        title: 'Ваш заказ отправлен', description: 'Бананы', payload: '101'),
+        title: 'Напоминание о записе',
+        description: 'Терапефт',
+        payload: '121 Кабинет'),
     NotificationItem(
-        title: 'Ваш заказ отправлен', description: 'Иогурт', payload: '102'),
+        title: 'Напоминание о записе', description: 'Терапефт', payload: '121'),
   ];
 
   @override
@@ -59,7 +64,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             margin: const EdgeInsets.only(bottom: 10),
             elevation: 2,
             child: ListTile(
-              leading: const Icon(Icons.notifications, color: Colors.green),
+              leading: Icon(Icons.notifications, color: primaryColor),
               title: Text(notification.title),
               subtitle: Text(notification.description),
               onTap: () {
@@ -91,6 +96,7 @@ class NotificationDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: primaryColor,
         title: const Text('Детали уведомления'),
       ),
       body: Center(

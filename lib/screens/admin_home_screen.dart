@@ -10,20 +10,22 @@ class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({Key? key}) : super(key: key);
 
   @override
-  _AdminHomeScreenState createState() => _AdminHomeScreenState();
+  State<AdminHomeScreen> createState() => _AdminHomeScreenState();
 }
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _currentPage = 0;
 
+  static const Color primaryColor = Color(0xFF30D5C8);
+
   @override
   Widget build(BuildContext context) {
-    // Получаем зависимости через Provider
+    // Получаем сервисы через Provider
     final userService = Provider.of<UserService>(context, listen: false);
     final doctorRoomService =
         Provider.of<DoctorRoomService>(context, listen: false);
 
-    final List<Widget> _pages = [
+    final List<Widget> pages = [
       AdminDoctorRoomsPage(
         userService: userService,
         doctorRoomService: doctorRoomService,
@@ -36,24 +38,23 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       appBar: AppBar(
         title: const Text('Панель администратора'),
         centerTitle: true,
-        backgroundColor: Color(0xFF6A0DAD),
+        backgroundColor: primaryColor,
+        elevation: 4,
         automaticallyImplyLeading: false,
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
-        child: _pages[_currentPage],
+        child: pages[_currentPage],
+        switchInCurve: Curves.easeIn,
+        switchOutCurve: Curves.easeOut,
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentPage,
-        selectedItemColor: Color(0xFF6A0DAD),
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: primaryColor,
+        unselectedItemColor: Colors.grey.shade600,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          setState(() {
-            _currentPage = index;
-          });
-        },
+        onTap: (index) => setState(() => _currentPage = index),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.meeting_room_outlined),

@@ -19,27 +19,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Получаем ChatService и AppointmentService из Provider'ов
     final chatService = Provider.of<ChatService>(context, listen: false);
     final appointmentService =
         Provider.of<AppointmentService>(context, listen: false);
 
-    // Формируем список страниц с передачей нужных зависимостей
     final List<Widget> _pages = [
       MainScreen(),
-      // Передаём chatService в ChatPage
       ChatPage(chatService: chatService),
-      // Передаём appointmentService в MyAppointmentsPage
       MyAppointmentsPage(service: appointmentService),
       ProfileScreen(),
     ];
 
-    const Color primaryColor = Color(0xFF6A0DAD);
+    const Color primaryColor = Color(0xFF30D5C8);
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
-        elevation: 4,
+        elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
         title: Row(
@@ -71,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Colors.white,
                 fontSize: 20,
                 letterSpacing: 1.1,
+                fontFamily: 'Roboto',
               ),
             ),
           ],
@@ -86,41 +83,67 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
         ],
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [primaryColor, primaryColor.withOpacity(0.8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
       ),
       body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 500),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(opacity: animation, child: child);
+        },
         child: _pages[_currentPage],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: Colors.white,
-        currentIndex: _currentPage,
-        selectedItemColor: primaryColor,
-        unselectedItemColor: Colors.grey[600],
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) => setState(() => _currentPage = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            activeIcon: Icon(Icons.dashboard),
-            label: 'Главная страница',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            activeIcon: Icon(Icons.shopping_cart),
-            label: 'ИИ Консултант',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_outlined),
-            activeIcon: Icon(Icons.receipt_long),
-            label: 'Мои запись',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_circle_outlined),
-            activeIcon: Icon(Icons.account_circle),
-            label: 'Профиль',
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          backgroundColor: Colors.white,
+          currentIndex: _currentPage,
+          selectedItemColor: primaryColor,
+          unselectedItemColor: Colors.grey[600],
+          showUnselectedLabels: true,
+          type: BottomNavigationBarType.fixed,
+          onTap: (index) => setState(() => _currentPage = index),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: 'Главная',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline),
+              activeIcon: Icon(Icons.chat_bubble),
+              label: 'ИИ Консултант',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.event_note_outlined),
+              activeIcon: Icon(Icons.event_note),
+              label: 'Мои записи',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              activeIcon: Icon(Icons.person),
+              label: 'Профиль',
+            ),
+          ],
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+        ),
       ),
     );
   }

@@ -31,7 +31,6 @@ class DoctorRoomService {
     }
   }
 
-  /// Снять врача с кабинета
   Future<Map<String, dynamic>> unassignDoctorFromRoom(
       int roomNumber, int doctorId) async {
     try {

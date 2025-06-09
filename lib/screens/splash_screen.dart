@@ -23,16 +23,17 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
+
     _logoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1500),
     );
     _logoAnimation =
-        CurvedAnimation(parent: _logoController, curve: Curves.easeOutBack);
+        CurvedAnimation(parent: _logoController, curve: Curves.elasticOut);
 
     _textController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1200),
     );
     _textAnimation =
         CurvedAnimation(parent: _textController, curve: Curves.easeIn);
@@ -75,46 +76,88 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF6A0DAD),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleTransition(
-              scale: _logoAnimation,
-              child: const Icon(
-                Icons.shopping_bag_rounded,
-                size: 100,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 24),
-            FadeTransition(
-              opacity: _textAnimation,
-              child: const Text(
-                'Aidyn Market',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
+      backgroundColor: const Color(0xFF30d5c8), // Основной цвет приложения
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ScaleTransition(
+                scale: _logoAnimation,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(24),
+                  child: const Icon(
+                    Icons.local_hospital_rounded,
+                    size: 96,
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 2),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-
-            // Если мы перешли в фазу loading — показываем спиннер
-            if (_phase == _Phase.loading) ...[
-              const SizedBox(height: 32),
-              const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              const SizedBox(height: 28),
+              FadeTransition(
+                opacity: _textAnimation,
+                child: const Text(
+                  'Hospital DI',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 2),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Loading…',
-                style: TextStyle(color: Colors.white),
+              const SizedBox(height: 8),
+              FadeTransition(
+                opacity: _textAnimation,
+                child: const Text(
+                  'Ваш персональный помощник в здравоохранении',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 1.1,
+                  ),
+                ),
               ),
+              if (_phase == _Phase.loading) ...[
+                const SizedBox(height: 40),
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  strokeWidth: 3,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Загрузка...',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ]
             ],
-          ],
+          ),
         ),
       ),
     );

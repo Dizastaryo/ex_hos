@@ -25,6 +25,8 @@ class DoctorAppointmentsPage extends StatefulWidget {
 class _DoctorAppointmentsPageState extends State<DoctorAppointmentsPage> {
   late Future<List<_AppointmentWithPatientName>> _appointmentsWithNamesFuture;
 
+  final Color primaryColor = const Color(0xFF30D5C8);
+
   @override
   void initState() {
     super.initState();
@@ -67,7 +69,10 @@ class _DoctorAppointmentsPageState extends State<DoctorAppointmentsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Мои пациенты"),
+        backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       body: FutureBuilder<List<_AppointmentWithPatientName>>(
         future: _appointmentsWithNamesFuture,
@@ -81,44 +86,74 @@ class _DoctorAppointmentsPageState extends State<DoctorAppointmentsPage> {
 
           final appointments = snapshot.data!;
           if (appointments.isEmpty) {
-            return const Center(child: Text("Записей нет."));
+            return const Center(
+              child: Text(
+                "Записей нет.",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            );
           }
 
           return ListView.builder(
+            padding: const EdgeInsets.all(16),
             itemCount: appointments.length,
             itemBuilder: (context, index) {
               final item = appointments[index];
               final appointment = item.appointment;
 
               return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: ListTile(
-                  title: Text("Пациент: ${item.patientName}"),
-                  subtitle: Column(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 3,
+                margin: const EdgeInsets.only(bottom: 14),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person, color: Colors.black54),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              item.patientName,
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.chat, color: primaryColor),
+                            tooltip: 'Открыть чат',
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ModeratorChatPage(
+                                    userId: appointment.patientId,
+                                    patientName: item.patientName,
+                                    chatService: widget.chatService,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        "Дата и время: ${_formatDateTime(appointment.appointmentTime)}",
+                        style: const TextStyle(fontSize: 14),
+                      ),
                       const SizedBox(height: 4),
                       Text(
-                          "Дата и время: ${_formatDateTime(appointment.appointmentTime)}"),
-                      Text("Кабинет №${appointment.roomNumber}"),
+                        "Кабинет №${appointment.roomNumber}",
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.black54),
+                      ),
                     ],
-                  ),
-                  leading: const Icon(Icons.event_available),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.chat),
-                    tooltip: 'Открыть чат',
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ModeratorChatPage(
-                            userId: appointment.patientId,
-                            patientName: item.patientName,
-                            chatService: widget.chatService,
-                          ),
-                        ),
-                      );
-                    },
                   ),
                 ),
               );

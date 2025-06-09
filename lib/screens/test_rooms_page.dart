@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
 import '../services/appointment_service.dart';
 import 'slots_page.dart';
 
@@ -30,7 +29,7 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
       builder: (context, child) => Theme(
         data: ThemeData.light().copyWith(
           colorScheme: const ColorScheme.light(
-            primary: Colors.deepOrange,
+            primary: Color(0xFF30d5c8),
             onPrimary: Colors.white,
             surface: Colors.white,
             onSurface: Colors.black,
@@ -55,15 +54,49 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
     }
   }
 
+  Widget _buildTestRoomCard(Map<String, dynamic> room) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: const Icon(Icons.science, color: Color(0xFF30d5c8), size: 36),
+        title: Text(
+          "Кабинет №${room['room_number']}",
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text("${room['specialization']}",
+                style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 4),
+            Text("Время: ${room['start_time']} - ${room['end_time']}"),
+          ],
+        ),
+        trailing: Icon(Icons.calendar_today, color: Colors.grey[600]),
+        onTap: () => _selectDateAndNavigate(room['room_number']),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Кабинеты для анализов")),
+      appBar: AppBar(
+        title: const Text("Кабинеты для анализов"),
+        backgroundColor: const Color(0xFF30d5c8),
+        foregroundColor: Colors.white,
+        elevation: 2,
+      ),
       body: FutureBuilder<List<dynamic>>(
         future: _rooms,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+                child: CircularProgressIndicator(color: Color(0xFF30d5c8)));
           }
           if (snapshot.hasError) {
             return Center(child: Text("Ошибка: ${snapshot.error}"));
@@ -72,19 +105,7 @@ class _TestRoomsPageState extends State<TestRoomsPage> {
           final rooms = snapshot.data!;
           return ListView.builder(
             itemCount: rooms.length,
-            itemBuilder: (context, index) {
-              final room = rooms[index];
-              return ListTile(
-                title: Text(
-                  "Кабинет №${room['room_number']} — ${room['specialization']}",
-                ),
-                subtitle: Text(
-                  "Время: ${room['start_time']} - ${room['end_time']}",
-                ),
-                trailing: const Icon(Icons.calendar_today),
-                onTap: () => _selectDateAndNavigate(room['room_number']),
-              );
-            },
+            itemBuilder: (context, index) => _buildTestRoomCard(rooms[index]),
           );
         },
       ),

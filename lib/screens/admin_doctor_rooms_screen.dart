@@ -22,6 +22,8 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
   List<UserDTO> doctors = [];
   bool isLoading = true;
 
+  final Color primaryColor = const Color(0xFF30D5C8);
+
   @override
   void initState() {
     super.initState();
@@ -79,11 +81,15 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Кабинеты и врачи'),
+        backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
+              padding: const EdgeInsets.all(12),
               itemCount: rooms.length,
               itemBuilder: (context, index) {
                 final room = rooms[index];
@@ -91,16 +97,19 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
                 final username = room['username'];
 
                 return Card(
-                  margin: const EdgeInsets.all(8),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  elevation: 3,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Кабинет №$roomNumber',
                             style: const TextStyle(
                                 fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text('Специализация: ${room['specialization'] ?? '—'}'),
                         Text('Рабочие дни: ${room['work_days'] ?? '—'}'),
                         Text(
@@ -109,26 +118,49 @@ class _AdminDoctorRoomsPageState extends State<AdminDoctorRoomsPage> {
                             room['lunch_end'] != null)
                           Text(
                               'Обед: ${room['lunch_start']}–${room['lunch_end']}'),
+                        const SizedBox(height: 12),
+                        const Divider(),
                         const SizedBox(height: 8),
                         username != null
                             ? Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('Назначен: $username'),
-                                  ElevatedButton(
+                                  Text('Назначен: $username',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w500)),
+                                  OutlinedButton.icon(
                                     onPressed: () => _unassignDoctor(
                                         roomNumber, room['user_id']),
-                                    child: const Text('Снять врача'),
-                                  )
+                                    icon: const Icon(Icons.person_remove),
+                                    label: const Text('Снять врача'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.redAccent,
+                                      side: const BorderSide(
+                                          color: Colors.redAccent),
+                                    ),
+                                  ),
                                 ],
                               )
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Врач не назначен'),
-                                  DropdownButton<int>(
-                                    hint: const Text('Выберите врача'),
+                                  const Text('Врач не назначен',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w500)),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<int>(
+                                    decoration: InputDecoration(
+                                      labelText: 'Выберите врача',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide:
+                                            BorderSide(color: primaryColor),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
                                     items: doctors.map((doctor) {
                                       return DropdownMenuItem<int>(
                                         value: doctor.id,

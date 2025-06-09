@@ -19,6 +19,8 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
 
   List<UserDTO> foundUsers = [];
 
+  final Color primaryColor = const Color(0xFF30D5C8);
+
   @override
   void initState() {
     super.initState();
@@ -90,83 +92,139 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Управление пользователями'),
+        title: const Text('Панель администратора'),
+        backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
+        foregroundColor: Colors.white,
+        elevation: 2,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Создать модератора',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _usernameController,
-              decoration: const InputDecoration(labelText: 'Username'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _createModerator,
-              child: const Text('Создать модератора'),
-            ),
-            const Divider(height: 40),
-            const Text(
-              'Поиск пользователей',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Введите имя пользователя',
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _searchUsers,
-                ),
+            _buildCard(
+              title: 'Создать аккаунт для доктора',
+              child: Column(
+                children: [
+                  _buildTextField(_usernameController, 'Имя пользователя'),
+                  const SizedBox(height: 10),
+                  _buildTextField(_emailController, 'Email'),
+                  const SizedBox(height: 10),
+                  _buildTextField(_passwordController, 'Пароль', obscure: true),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Создать модератора'),
+                      onPressed: _createModerator,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: foundUsers.length,
-              itemBuilder: (context, index) {
-                final user = foundUsers[index];
-                return ListTile(
-                  leading: const Icon(Icons.person),
-                  title: Text(user.username),
-                  subtitle: Text('ID: ${user.id}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.block),
-                        onPressed: () => _blockUser(user.id),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.lock_open),
-                        onPressed: () => _unblockUser(user.id),
-                      ),
-                    ],
+            const SizedBox(height: 24),
+            _buildCard(
+              title: 'Поиск пользователей',
+              child: Column(
+                children: [
+                  _buildTextField(
+                    _searchController,
+                    'Введите имя пользователя',
+                    suffix: IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _searchUsers,
+                    ),
                   ),
-                );
-              },
+                  const SizedBox(height: 20),
+                  if (foundUsers.isEmpty) const Text('Нет результатов'),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: foundUsers.length,
+                    itemBuilder: (context, index) {
+                      final user = foundUsers[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        elevation: 1,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: primaryColor,
+                            child:
+                                const Icon(Icons.person, color: Colors.white),
+                          ),
+                          title: Text(user.username),
+                          subtitle: Text('ID: ${user.id}'),
+                          trailing: Wrap(
+                            spacing: 8,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.block,
+                                    color: Colors.red.shade400),
+                                tooltip: 'Заблокировать',
+                                onPressed: () => _blockUser(user.id),
+                              ),
+                              IconButton(
+                                icon:
+                                    Icon(Icons.lock_open, color: primaryColor),
+                                tooltip: 'Разблокировать',
+                                onPressed: () => _unblockUser(user.id),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard({required String title, required Widget child}) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label, {
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: suffix,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: primaryColor, width: 2),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );

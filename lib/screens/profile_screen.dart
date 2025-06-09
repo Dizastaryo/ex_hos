@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/appointment_service.dart';
 
+// Основной цвет
+const Color primaryColor = Color(0xFF30D5C8);
+
 class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -18,7 +21,7 @@ class ProfileScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: Color(0xFF6A0DAD), // основной цвет
+        backgroundColor: primaryColor,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -76,10 +79,9 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Новая секция: Характеристика
                   ListTile(
-                    leading: Icon(Icons.insert_chart_outlined,
-                        color: Color(0xFF6A0DAD)),
+                    leading:
+                        Icon(Icons.insert_chart_outlined, color: primaryColor),
                     title: Text(
                       'Характеристика',
                       style: TextStyle(fontSize: 16, color: Colors.black),
@@ -90,8 +92,8 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: Icon(Icons.privacy_tip_outlined,
-                        color: Color(0xFF6A0DAD)), // основной цвет
+                    leading:
+                        Icon(Icons.privacy_tip_outlined, color: primaryColor),
                     title: Text(
                       'Политика конфиденциальности',
                       style: TextStyle(fontSize: 16, color: Colors.black),
@@ -103,8 +105,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: Icon(Icons.gavel_outlined,
-                        color: Color(0xFF6A0DAD)), // основной цвет
+                    leading: Icon(Icons.gavel_outlined, color: primaryColor),
                     title: Text(
                       'Пользовательское соглашение',
                       style: TextStyle(fontSize: 16, color: Colors.black),
@@ -116,8 +117,7 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: Icon(Icons.support_agent,
-                        color: Color(0xFF6A0DAD)), // основной цвет
+                    leading: Icon(Icons.support_agent, color: primaryColor),
                     title: Text(
                       'Связаться с нами',
                       style: TextStyle(fontSize: 16, color: Colors.black),
@@ -140,7 +140,7 @@ class ProfileScreen extends StatelessWidget {
                       style: TextStyle(color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF6A0DAD), // основной цвет
+                      backgroundColor: primaryColor,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 30, vertical: 15),
                       shape: RoundedRectangleBorder(
