@@ -76,7 +76,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF30d5c8), // Основной цвет приложения
+      backgroundColor: const Color(0xFF30d5c8),
       body: SafeArea(
         child: Center(
           child: Column(
@@ -114,34 +114,40 @@ class _SplashScreenState extends State<SplashScreen>
               const SizedBox(height: 28),
               FadeTransition(
                 opacity: _textAnimation,
-                child: const Text(
-                  'Hospital DI',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black26,
-                        offset: Offset(0, 2),
-                        blurRadius: 6,
+                child: Column(
+                  children: [
+                    const Text(
+                      'Hospital DI',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black26,
+                            offset: Offset(0, 2),
+                            blurRadius: 6,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              FadeTransition(
-                opacity: _textAnimation,
-                child: const Text(
-                  'Ваш персональный помощник в здравоохранении',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 1.1,
-                  ),
+                    ),
+                    const SizedBox(height: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      child: const Text(
+                        'Ваш персональный помощник в здравоохранении',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (_phase == _Phase.loading) ...[
