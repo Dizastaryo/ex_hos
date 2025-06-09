@@ -13,7 +13,7 @@ class ChatService {
     try {
       final response = await _dio.post(
         '$_baseUrl/chat/diagnose',
-        data: {'diagnosis': text},
+        data: {'text': text},
       );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
