@@ -1,4 +1,3 @@
-// moderator_chat_page.dart
 import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
 
@@ -74,31 +73,66 @@ class _ModeratorChatPageState extends State<ModeratorChatPage> {
   Widget _buildMessage(Map<String, dynamic> msg) {
     final sender = msg['sender'];
     final text = msg['message'] ?? '';
-    final isModerator = sender == 'moderator';
 
-    final color = isModerator
-        ? const Color(0xFF30D5C8).withOpacity(0.2)
-        : Colors.grey.shade200;
-    final align = isModerator ? Alignment.centerRight : Alignment.centerLeft;
+    String senderName;
+    Color bubbleColor;
+    Alignment alignment;
+    CrossAxisAlignment crossAlign;
 
-    String displayText = text;
-    if (sender == 'user') {
-      displayText = '${widget.patientName}: $text';
-    } else if (sender == 'model') {
-      displayText = 'ИИ: $text';
+    switch (sender) {
+      case 'moderator':
+        senderName = 'Вы';
+        bubbleColor = const Color(0xFF30D5C8).withOpacity(0.2);
+        alignment = Alignment.centerRight;
+        crossAlign = CrossAxisAlignment.end;
+        break;
+      case 'user':
+        senderName = widget.patientName;
+        bubbleColor = Colors.grey.shade200;
+        alignment = Alignment.centerLeft;
+        crossAlign = CrossAxisAlignment.start;
+        break;
+      case 'model':
+        senderName = 'ИИ';
+        bubbleColor = Colors.grey.shade100;
+        alignment = Alignment.centerLeft;
+        crossAlign = CrossAxisAlignment.start;
+        break;
+      default:
+        senderName = 'Система';
+        bubbleColor = Colors.red.shade100;
+        alignment = Alignment.center;
+        crossAlign = CrossAxisAlignment.center;
     }
 
     return Align(
-      alignment: align,
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        elevation: 2,
-        color: color,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Text(displayText, style: const TextStyle(fontSize: 16)),
-        ),
+      alignment: alignment,
+      child: Column(
+        crossAxisAlignment: crossAlign,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              senderName,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            elevation: 2,
+            color: bubbleColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                text,
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -139,7 +173,9 @@ class _ModeratorChatPageState extends State<ModeratorChatPage> {
           ),
           if (_isLoading)
             const Padding(
-                padding: EdgeInsets.all(8), child: CircularProgressIndicator()),
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(),
+            ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),

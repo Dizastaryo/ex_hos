@@ -115,22 +115,64 @@ class _ChatPageState extends State<ChatPage> {
     final text = message['text'] as String;
     final isUser = sender == 'user';
 
+    // Маппинг отправителя в отображаемое имя
+    String displayName;
+    IconData avatarIcon;
+    Color avatarBg;
+
+    switch (sender) {
+      case 'user':
+        displayName = 'Вы';
+        avatarIcon = Icons.person;
+        avatarBg = _primaryColor.withOpacity(0.1);
+        break;
+      case 'model':
+        displayName = 'Диагностический бот';
+        avatarIcon = Icons.smart_toy;
+        avatarBg = _aiMessageColor;
+        break;
+      case 'moderator':
+        displayName = 'Доктор';
+        avatarIcon = Icons.admin_panel_settings;
+        avatarBg = _primaryColor.withOpacity(0.2);
+        break;
+      default:
+        displayName = sender;
+        avatarIcon = Icons.account_circle;
+        avatarBg = _primaryColor.withOpacity(0.2);
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: _primaryColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.auto_awesome, size: 18, color: _primaryColor),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Аватар и имя отправителя
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: avatarBg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(avatarIcon, size: 18, color: _primaryColor),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 8),
           ],
@@ -153,26 +195,44 @@ class _ChatPageState extends State<ChatPage> {
                   )
                 ],
               ),
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.4,
-                  color: isUser ? Colors.white : Colors.grey[800],
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: isUser ? Colors.white : Colors.grey[800],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           if (isUser) ...[
             const SizedBox(width: 8),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: _primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(Icons.person, size: 18, color: _primaryColor),
+            Column(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: avatarBg,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(avatarIcon, size: 18, color: _primaryColor),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ],
         ],
