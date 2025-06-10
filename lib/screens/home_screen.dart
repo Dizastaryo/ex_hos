@@ -61,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 12),
             const Text(
-              'Aidyn Market',
+              'Hospital DI',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: Colors.white,

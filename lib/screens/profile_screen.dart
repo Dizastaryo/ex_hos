@@ -171,7 +171,7 @@ class ProfileScreen extends StatelessWidget {
             children: [
               DropdownButtonFormField<String>(
                 decoration: InputDecoration(labelText: 'Пол'),
-                items: ['male', 'female']
+                items: ['мужчина', 'женщина']
                     .map((g) => DropdownMenuItem(value: g, child: Text(g)))
                     .toList(),
                 onChanged: (v) => gender = v,
