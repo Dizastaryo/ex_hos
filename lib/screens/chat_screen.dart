@@ -127,7 +127,7 @@ class _ChatPageState extends State<ChatPage> {
         avatarBg = _primaryColor.withOpacity(0.1);
         break;
       case 'model':
-        displayName = 'Диагностический бот';
+        displayName = 'ИИ';
         avatarIcon = Icons.smart_toy;
         avatarBg = _aiMessageColor;
         break;
