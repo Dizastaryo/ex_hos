@@ -12,6 +12,7 @@ import (
 
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/repository/postgres"
+	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
 
@@ -28,11 +29,14 @@ const libraryUploadDir = "./uploads/library"
 type FileService struct {
 	fileRepo *postgres.FileRepository
 	logger   *zap.Logger
+	r2       *storage.R2
 }
 
-func NewFileService(fileRepo *postgres.FileRepository, logger *zap.Logger) *FileService {
-	os.MkdirAll(libraryUploadDir, 0o755)
-	return &FileService{fileRepo: fileRepo, logger: logger}
+func NewFileService(fileRepo *postgres.FileRepository, logger *zap.Logger, r2 *storage.R2) *FileService {
+	if r2 == nil {
+		os.MkdirAll(libraryUploadDir, 0o755)
+	}
+	return &FileService{fileRepo: fileRepo, logger: logger, r2: r2}
 }
 
 // Upload saves a multipart file blob to disk under /uploads/library/<date>/
@@ -69,29 +73,38 @@ func (s *FileService) Upload(
 	hash := fmt.Sprintf("%x", sha256.Sum256(bytes))
 	ext := filepath.Ext(header.Filename)
 	datePath := time.Now().Format("2006/01/02")
-	dirPath := filepath.Join(libraryUploadDir, datePath)
-	if err := os.MkdirAll(dirPath, 0o755); err != nil {
-		return nil, fmt.Errorf("mkdir: %w", err)
-	}
 	storedName := hash[:16] + ext
-	fullPath := filepath.Join(dirPath, storedName)
-	if err := os.WriteFile(fullPath, bytes, 0o644); err != nil {
-		return nil, fmt.Errorf("write file: %w", err)
+	r2Key := "uploads/library/" + datePath + "/" + storedName
+
+	var fileURL string
+	if s.r2 != nil {
+		var uploadErr error
+		fileURL, uploadErr = s.r2.Upload(ctx, r2Key, bytes, contentType)
+		if uploadErr != nil {
+			return nil, fmt.Errorf("r2 upload: %w", uploadErr)
+		}
+	} else {
+		dirPath := filepath.Join(libraryUploadDir, datePath)
+		if err := os.MkdirAll(dirPath, 0o755); err != nil {
+			return nil, fmt.Errorf("mkdir: %w", err)
+		}
+		fullPath := filepath.Join(dirPath, storedName)
+		if err := os.WriteFile(fullPath, bytes, 0o644); err != nil {
+			return nil, fmt.Errorf("write file: %w", err)
+		}
+		fileURL = "/uploads/library/" + datePath + "/" + storedName
 	}
 
 	entity := &domain.File{
 		UserID:      userID,
 		Filename:    header.Filename,
-		FileURL:     "/uploads/library/" + datePath + "/" + storedName,
+		FileURL:     fileURL,
 		MimeType:    contentType,
 		FileSize:    header.Size,
 		CategoryID:  categoryID,
 		Description: description,
 	}
 	if err := s.fileRepo.Create(ctx, entity); err != nil {
-		// Best-effort cleanup so we don't leave orphan blobs on disk when
-		// the DB insert fails (e.g. invalid category_id FK).
-		_ = os.Remove(fullPath)
 		return nil, err
 	}
 	return s.fileRepo.GetByID(ctx, entity.ID)

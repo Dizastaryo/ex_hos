@@ -25,6 +25,7 @@ import (
 	"github.com/seeu/backend/internal/service"
 	"github.com/seeu/backend/internal/ws"
 	jwtpkg "github.com/seeu/backend/pkg/jwt"
+	"github.com/seeu/backend/pkg/storage"
 	"github.com/seeu/backend/pkg/whatsapp"
 )
 
@@ -77,8 +78,18 @@ func main() {
 
 	sessionStore := redisRepo.NewSessionStore(cache)
 
-	// Local file storage for media uploads
-	logger.Info("using local file storage for media")
+	// R2 cloud storage (optional — falls back to local disk if not configured)
+	var r2Client *storage.R2
+	if cfg.R2.IsConfigured() {
+		var r2Err error
+		r2Client, r2Err = storage.NewR2(cfg.R2.Endpoint, cfg.R2.AccessKey, cfg.R2.SecretKey, cfg.R2.Bucket, cfg.R2.PublicURL)
+		if r2Err != nil {
+			logger.Fatal("init r2 storage", zap.Error(r2Err))
+		}
+		logger.Info("r2 cloud storage enabled", zap.String("bucket", cfg.R2.Bucket))
+	} else {
+		logger.Info("r2 not configured — using local disk storage")
+	}
 
 	// JWT
 	jwtManager := jwtpkg.NewManager(
@@ -160,7 +171,7 @@ func main() {
 	userService := service.NewUserService(userRepo, followRepo, frRepo, wsHub, cache, logger)
 	// MediaService must come before post/story services that take it as a dep
 	// to release dedup refs on delete.
-	mediaService := service.NewMediaService(db.Pool, logger)
+	mediaService := service.NewMediaService(db.Pool, logger, r2Client)
 	postService := service.NewPostService(postRepo, userRepo, followRepo, cache, wsHub, mediaService, logger)
 	storyService := service.NewStoryService(storyRepo, userRepo, followRepo, notifRepo, cache, wsHub, mediaService, logger)
 	commentService := service.NewCommentService(commentRepo, postRepo, notifRepo, cache, wsHub, logger)

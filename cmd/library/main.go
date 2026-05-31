@@ -20,6 +20,7 @@ import (
 	redisRepo "github.com/seeu/backend/internal/repository/redis"
 	"github.com/seeu/backend/internal/service"
 	jwtpkg "github.com/seeu/backend/pkg/jwt"
+	"github.com/seeu/backend/pkg/storage"
 )
 
 func main() {
@@ -84,8 +85,21 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
 
+	// R2 cloud storage
+	var r2Client *storage.R2
+	if cfg.R2.IsConfigured() {
+		var r2Err error
+		r2Client, r2Err = storage.NewR2(cfg.R2.Endpoint, cfg.R2.AccessKey, cfg.R2.SecretKey, cfg.R2.Bucket, cfg.R2.PublicURL)
+		if r2Err != nil {
+			logger.Fatal("init r2 storage", zap.Error(r2Err))
+		}
+		logger.Info("r2 cloud storage enabled", zap.String("bucket", cfg.R2.Bucket))
+	} else {
+		logger.Info("r2 not configured — using local disk storage")
+	}
+
 	// Services
-	fileService := service.NewFileService(fileRepo, logger)
+	fileService := service.NewFileService(fileRepo, logger, r2Client)
 
 	// Handlers
 	fileHandler := handler.NewFileHandler(fileService, validate, logger)

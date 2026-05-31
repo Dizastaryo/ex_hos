@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/seeu/backend/pkg/probe"
+	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
 
@@ -65,14 +66,17 @@ type MediaUploadResult struct {
 type MediaService struct {
 	db     *pgxpool.Pool
 	logger *zap.Logger
+	r2     *storage.R2
 }
 
-func NewMediaService(db *pgxpool.Pool, logger *zap.Logger) *MediaService {
-	// Ensure upload directory exists
-	os.MkdirAll(UploadDir, 0755)
+func NewMediaService(db *pgxpool.Pool, logger *zap.Logger, r2 *storage.R2) *MediaService {
+	if r2 == nil {
+		os.MkdirAll(UploadDir, 0755)
+	}
 	return &MediaService{
 		db:     db,
 		logger: logger,
+		r2:     r2,
 	}
 }
 
@@ -205,21 +209,46 @@ func (s *MediaService) Upload(ctx context.Context, file multipart.File, header *
 		}, nil
 	}
 
-	// Save new file to disk
 	ext := filepath.Ext(header.Filename)
 	if ext == "" {
 		ext = extFromMime(contentType)
 	}
 	datePath := time.Now().Format("2006/01/02")
-	dirPath := filepath.Join(UploadDir, datePath)
-	os.MkdirAll(dirPath, 0755)
-
 	fileName := hash[:16] + ext
 	relPath := datePath + "/" + fileName
-	fullPath := filepath.Join(dirPath, fileName)
+	r2Key := "uploads/" + relPath
 
-	if err := os.WriteFile(fullPath, fileBytes, 0644); err != nil {
-		return nil, fmt.Errorf("write file: %w", err)
+	var publicURL string
+	duration := 0
+
+	if s.r2 != nil {
+		// Upload to Cloudflare R2
+		var uploadErr error
+		publicURL, uploadErr = s.r2.Upload(ctx, r2Key, fileBytes, contentType)
+		if uploadErr != nil {
+			return nil, fmt.Errorf("r2 upload: %w", uploadErr)
+		}
+		// Probe duration via temp file (ffprobe needs a local path)
+		if isAudio || isVideo {
+			if tmp, err := os.CreateTemp("", "seeu-probe-*"+ext); err == nil {
+				tmp.Write(fileBytes)
+				tmp.Close()
+				duration = probe.DurationSeconds(tmp.Name())
+				os.Remove(tmp.Name())
+			}
+		}
+	} else {
+		// Fall back to local disk
+		dirPath := filepath.Join(UploadDir, datePath)
+		os.MkdirAll(dirPath, 0755)
+		fullPath := filepath.Join(dirPath, fileName)
+		if err := os.WriteFile(fullPath, fileBytes, 0644); err != nil {
+			return nil, fmt.Errorf("write file: %w", err)
+		}
+		publicURL = "/uploads/" + relPath
+		if isAudio || isVideo {
+			duration = probe.DurationSeconds(fullPath)
+		}
 	}
 
 	// Insert into media_files table — store as relative path with forward
@@ -227,17 +256,13 @@ func (s *MediaService) Upload(ctx context.Context, file multipart.File, header *
 	_, err = s.db.Exec(ctx, `
 		INSERT INTO media_files (hash, file_path, mime_type, media_type, size)
 		VALUES ($1, $2, $3, $4, $5)`,
-		hash, "uploads/"+relPath, contentType, mediaType, int64(len(fileBytes)),
+		hash, r2Key, contentType, mediaType, int64(len(fileBytes)),
 	)
 	if err != nil {
 		s.logger.Warn("insert media_files record", zap.Error(err))
 	}
-	duration := 0
-	if isAudio || isVideo {
-		duration = probe.DurationSeconds(fullPath)
-	}
 	return &MediaUploadResult{
-		URL:             "/uploads/" + relPath,
+		URL:             publicURL,
 		MediaType:       mediaType,
 		MimeType:        contentType,
 		Size:            int64(len(fileBytes)),
@@ -272,13 +297,23 @@ func (s *MediaService) Release(ctx context.Context, urls []string) {
 // Two sequential statements (delete-first, then decrement-the-rest) avoid
 // that race entirely.
 func (s *MediaService) releaseOne(ctx context.Context, url string) {
-	if url == "" || !strings.HasPrefix(url, "/uploads/") {
-		return // external URL or empty
+	if url == "" {
+		return
 	}
-	// posts store URL like "/uploads/<date>/<file>"; media_files.file_path
-	// stores "./uploads/<date>/<file>" (or sometimes "uploads/<date>/<file>")
-	// — we suffix-match to be tolerant of either form already in the DB.
-	suffix := strings.TrimPrefix(url, "/")
+	// Determine the DB key suffix to match against media_files.file_path.
+	// Supported URL forms:
+	//   /uploads/<date>/<file>          — legacy local disk
+	//   https://pub-xxx.r2.dev/uploads/<date>/<file> — R2 public URL
+	var suffix string
+	isR2 := false
+	if key, ok := s.r2.KeyFromURL(url); ok {
+		suffix = key
+		isR2 = true
+	} else if strings.HasPrefix(url, "/uploads/") {
+		suffix = strings.TrimPrefix(url, "/")
+	} else {
+		return // external URL — skip
+	}
 	likePattern := "%" + suffix
 
 	// Step 1: delete rows whose last reference is this one. RETURNING file_path
@@ -316,14 +351,22 @@ func (s *MediaService) releaseOne(ctx context.Context, url string) {
 			zap.String("url", url), zap.Error(err))
 	}
 
-	// Step 3: remove disk blobs for fully-released files. Best-effort —
-	// already-missing files are fine, anything else just logs.
+	// Step 3: remove blobs for fully-released files. Best-effort.
 	for _, path := range pathsToDelete {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			s.logger.Warn("remove orphan blob",
-				zap.String("path", path), zap.Error(err))
+		if isR2 {
+			if err := s.r2.Delete(ctx, path); err != nil {
+				s.logger.Warn("r2 delete orphan blob",
+					zap.String("key", path), zap.Error(err))
+			} else {
+				s.logger.Info("r2 released orphan blob", zap.String("key", path))
+			}
 		} else {
-			s.logger.Info("released orphan blob", zap.String("path", path))
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				s.logger.Warn("remove orphan blob",
+					zap.String("path", path), zap.Error(err))
+			} else {
+				s.logger.Info("released orphan blob", zap.String("path", path))
+			}
 		}
 	}
 }

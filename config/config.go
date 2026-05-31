@@ -17,6 +17,7 @@ type Config struct {
 	OpenAI    OpenAIConfig
 	WhatsApp  WhatsAppConfig
 	OTP       OTPConfig
+	R2        R2Config
 }
 
 type AppConfig struct {
@@ -47,6 +48,20 @@ type OpenAIConfig struct {
 // dev-mode (logs the code, accepts "0000"); URL set → real send.
 type WhatsAppConfig struct {
 	ServiceURL string `env:"WHATSAPP_SERVICE_URL" env-default:""`
+}
+
+// R2Config holds Cloudflare R2 credentials. All fields empty → fall back to
+// local disk storage (dev without internet). All fields set → upload to R2.
+type R2Config struct {
+	Endpoint  string `env:"R2_ENDPOINT" env-default:""`
+	AccessKey string `env:"R2_ACCESS_KEY" env-default:""`
+	SecretKey string `env:"R2_SECRET_KEY" env-default:""`
+	Bucket    string `env:"R2_BUCKET" env-default:"seeu-uploads"`
+	PublicURL string `env:"R2_PUBLIC_URL" env-default:""`
+}
+
+func (c R2Config) IsConfigured() bool {
+	return c.Endpoint != "" && c.AccessKey != "" && c.SecretKey != "" && c.PublicURL != ""
 }
 
 // OTPConfig — knobs for OTP generation/validation. Defaults match the
