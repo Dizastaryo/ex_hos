@@ -304,8 +304,8 @@ func (s *ChatService) AddGroupMember(
 }
 
 // RemoveGroupMember: admin может убрать любого; member может убрать только
-// себя (leave). Last-admin-protection: если target — единственный admin,
-// удаление запрещается до promote'а другого admin'а (ErrLastAdmin).
+// себя (leave). Last-admin-protection: если admin пытается убрать ДРУГОГО
+// единственного admin'а — запрещается (ErrLastAdmin). Self-leave всегда разрешён.
 func (s *ChatService) RemoveGroupMember(
 	ctx context.Context,
 	conversationID, callerID, targetID string,
@@ -326,19 +326,23 @@ func (s *ChatService) RemoveGroupMember(
 			return domain.ErrForbidden
 		}
 	}
-	// Last-admin guard: если target — admin и admins == 1, отказ. И self-leave
-	// тоже блокируется — нельзя оставить группу без управления.
-	targetIsAdmin, err := s.chatRepo.IsAdmin(ctx, conversationID, targetID)
-	if err != nil {
-		return err
-	}
-	if targetIsAdmin {
-		count, err := s.chatRepo.CountAdmins(ctx, conversationID)
+	// Last-admin guard: только для случая когда admin удаляет ДРУГОГО участника.
+	// Self-leave (выход из своей группы) всегда разрешён — иначе пользователь
+	// не сможет покинуть чат, а frontend будет получать ложный успех (200 OK)
+	// без фактического удаления из conversation_participants.
+	if callerID != targetID {
+		targetIsAdmin, err := s.chatRepo.IsAdmin(ctx, conversationID, targetID)
 		if err != nil {
 			return err
 		}
-		if count <= 1 {
-			return domain.ErrLastAdmin
+		if targetIsAdmin {
+			count, err := s.chatRepo.CountAdmins(ctx, conversationID)
+			if err != nil {
+				return err
+			}
+			if count <= 1 {
+				return domain.ErrLastAdmin
+			}
 		}
 	}
 	// Снимем target'а до отправки WS — иначе он получит уведомление о собственном leave'е.

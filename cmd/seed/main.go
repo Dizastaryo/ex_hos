@@ -233,6 +233,9 @@ func main() {
 // (posts, comments, likes, follows, chats, stories) is preserved across runs.
 func cleanDemoData(ctx context.Context, tx pgx.Tx) error {
 	stmts := []string{
+		// Удаляем group-чаты, привязанные к seed-сборам (созданы в процессе тестирования).
+		// conversation_participants и messages удаляются каскадно (ON DELETE CASCADE).
+		`DELETE FROM conversations WHERE id IN (SELECT chat_id FROM sbory WHERE id::text LIKE 'aa000000%' AND chat_id IS NOT NULL)`,
 		`DELETE FROM sbor_members WHERE sbor_id IN (SELECT id FROM sbory WHERE id::text LIKE 'aa000000%')`,
 		`DELETE FROM sbory WHERE id::text LIKE 'aa000000%'`,
 		`DELETE FROM video_views`,
