@@ -247,7 +247,7 @@ func main() {
 	followHandler := handler.NewFollowHandler(followService, logger)
 	notifHandler := handler.NewNotificationHandler(notifService, logger)
 	highlightHandler := handler.NewHighlightHandler(highlightService, validate, logger)
-	mediaHandler := handler.NewMediaHandler(mediaService, logger)
+	mediaHandler := handler.NewMediaHandler(mediaService, r2Client, logger)
 	searchHandler := handler.NewSearchHandler(searchService, searchHistoryRepo, logger)
 	audioRepo := postgres.NewAudioRepository(db)
 	audioHandler := handler.NewAudioHandler(audioRepo, logger)

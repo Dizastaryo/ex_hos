@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/seeu/backend/internal/service"
+	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
 
@@ -53,12 +54,14 @@ func resolveUploadPath(urlPath string) (string, error) {
 
 type MediaHandler struct {
 	mediaService *service.MediaService
+	r2           *storage.R2
 	logger       *zap.Logger
 }
 
-func NewMediaHandler(mediaService *service.MediaService, logger *zap.Logger) *MediaHandler {
+func NewMediaHandler(mediaService *service.MediaService, r2 *storage.R2, logger *zap.Logger) *MediaHandler {
 	return &MediaHandler{
 		mediaService: mediaService,
+		r2:           r2,
 		logger:       logger,
 	}
 }
@@ -89,6 +92,7 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 // VideoThumbnail generates a thumbnail at a specific timestamp.
 // POST /api/v1/media/video-thumbnail
 // Body: { "video_url": "/uploads/.../video.mp4", "timestamp": 5.0 }
+// Works with both local /uploads/ paths and R2 public URLs.
 func (h *MediaHandler) VideoThumbnail(c *fiber.Ctx) error {
 	var req struct {
 		VideoURL  string  `json:"video_url"`
@@ -101,38 +105,70 @@ func (h *MediaHandler) VideoThumbnail(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusBadRequest, "video_url is required")
 	}
 
-	localPath, err := resolveUploadPath(req.VideoURL)
-	if err != nil {
-		return respondError(c, fiber.StatusBadRequest, "invalid video_url")
-	}
-	if _, err := os.Stat(localPath); err != nil {
-		return respondError(c, fiber.StatusNotFound, "video file not found")
-	}
-
-	thumbDir := filepath.Join(".", "uploads", "thumbs")
-	os.MkdirAll(thumbDir, 0755)
-
 	ts := strconv.FormatFloat(req.Timestamp, 'f', 2, 64)
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(req.VideoURL+":"+ts)))
 	thumbFile := hash[:16] + ".jpg"
-	thumbPath := filepath.Join(thumbDir, thumbFile)
 
-	// BACK-3: ffmpeg context-timeout 30 сек. Защита от corrupt-видео которые
-	// заставляют ffmpeg висеть. На timeout — exec.CommandContext автоматически
-	// убивает процесс. cleanup: tmp thumb-файл удаляем если ffmpeg failed,
-	// чтобы не оставлять огрызки.
+	// Resolve video to a local path, downloading from R2 if needed.
+	var localVideoPath string
+	var cleanupVideo func()
+
+	if key, ok := h.r2.KeyFromURL(req.VideoURL); ok {
+		data, err := h.r2.Download(c.Context(), key)
+		if err != nil {
+			return respondError(c, fiber.StatusNotFound, "video file not found")
+		}
+		ext := filepath.Ext(key)
+		tmp, err := os.CreateTemp("", "seeu-video-*"+ext)
+		if err != nil {
+			return respondError(c, fiber.StatusInternalServerError, "failed to create temp file")
+		}
+		tmp.Write(data)
+		tmp.Close()
+		localVideoPath = tmp.Name()
+		cleanupVideo = func() { os.Remove(tmp.Name()) }
+	} else {
+		path, err := resolveUploadPath(req.VideoURL)
+		if err != nil {
+			return respondError(c, fiber.StatusBadRequest, "invalid video_url")
+		}
+		if _, err := os.Stat(path); err != nil {
+			return respondError(c, fiber.StatusNotFound, "video file not found")
+		}
+		localVideoPath = path
+		cleanupVideo = func() {}
+	}
+	defer cleanupVideo()
+
+	// Determine where ffmpeg writes the thumbnail.
+	var thumbPath string
+	useR2Thumb := h.r2 != nil
+	if useR2Thumb {
+		tmp, err := os.CreateTemp("", "seeu-thumb-*.jpg")
+		if err != nil {
+			return respondError(c, fiber.StatusInternalServerError, "failed to create temp file")
+		}
+		tmp.Close()
+		thumbPath = tmp.Name()
+		defer os.Remove(thumbPath)
+	} else {
+		thumbDir := filepath.Join(".", "uploads", "thumbs")
+		os.MkdirAll(thumbDir, 0755)
+		thumbPath = filepath.Join(thumbDir, thumbFile)
+	}
+
+	// BACK-3: ffmpeg context-timeout 30 сек.
 	ctx, cancel := context.WithTimeout(c.Context(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-y", "-ss", ts,
-		"-i", localPath,
+		"-i", localVideoPath,
 		"-vframes", "1",
 		"-q:v", "3",
 		"-vf", "scale=480:-1",
 		thumbPath,
 	)
 	if err := cmd.Run(); err != nil {
-		// Cleanup orphan thumb if ffmpeg partially wrote it.
 		_ = os.Remove(thumbPath)
 		if ctx.Err() == context.DeadlineExceeded {
 			h.logger.Error("ffmpeg thumbnail timeout", zap.String("video", req.VideoURL))
@@ -142,6 +178,19 @@ func (h *MediaHandler) VideoThumbnail(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to generate thumbnail")
 	}
 
+	if useR2Thumb {
+		data, err := os.ReadFile(thumbPath)
+		if err != nil {
+			return respondError(c, fiber.StatusInternalServerError, "failed to read thumbnail")
+		}
+		r2Key := "uploads/thumbs/" + thumbFile
+		url, err := h.r2.Upload(c.Context(), r2Key, data, "image/jpeg")
+		if err != nil {
+			h.logger.Error("r2 upload thumbnail", zap.Error(err))
+			return respondError(c, fiber.StatusInternalServerError, "failed to upload thumbnail")
+		}
+		return respondSuccess(c, fiber.StatusOK, fiber.Map{"thumbnail_url": url}, nil)
+	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{
 		"thumbnail_url": "/uploads/thumbs/" + thumbFile,
 	}, nil)

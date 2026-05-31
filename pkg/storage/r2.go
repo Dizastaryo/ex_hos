@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -69,6 +70,30 @@ func (r *R2) Delete(ctx context.Context, key string) error {
 		Key:    aws.String(key),
 	})
 	return err
+}
+
+// URL returns the public URL for the given object key.
+func (r *R2) URL(key string) string {
+	if r == nil {
+		return ""
+	}
+	return r.publicURL + "/" + key
+}
+
+// Download fetches the object at key and returns its bytes.
+func (r *R2) Download(ctx context.Context, key string) ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("r2 not configured")
+	}
+	out, err := r.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(r.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("r2 download %s: %w", key, err)
+	}
+	defer out.Body.Close()
+	return io.ReadAll(out.Body)
 }
 
 // KeyFromURL extracts the R2 object key from a full public URL.

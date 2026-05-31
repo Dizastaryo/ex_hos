@@ -190,18 +190,24 @@ func (s *MediaService) Upload(ctx context.Context, file multipart.File, header *
 		// File already exists — increment ref_count and return existing path
 		s.db.Exec(ctx, `UPDATE media_files SET ref_count = ref_count + 1 WHERE hash = $1`, hash)
 		s.logger.Info("media deduplicated", zap.String("hash", hash[:12]))
-		// existingPath is relative like "uploads/2026/05/04/abc.jpg"
-		// Normalise Windows backslashes that filepath.Join may have stored.
-		relPath := strings.ReplaceAll(existingPath, "\\", "/")
-		if !strings.HasPrefix(relPath, "/") {
-			relPath = "/" + relPath
+		// existingPath is the R2 key (e.g. "uploads/2026/05/04/abc.jpg") or a
+		// legacy local path. Build the correct public URL for each storage mode.
+		var dedupURL string
+		if s.r2 != nil {
+			key := strings.ReplaceAll(existingPath, "\\", "/")
+			dedupURL = s.r2.URL(key)
+		} else {
+			dedupURL = strings.ReplaceAll(existingPath, "\\", "/")
+			if !strings.HasPrefix(dedupURL, "/") {
+				dedupURL = "/" + dedupURL
+			}
 		}
 		duration := 0
 		if isAudio || isVideo {
 			duration = probe.DurationSeconds(existingPath)
 		}
 		return &MediaUploadResult{
-			URL:             relPath,
+			URL:             dedupURL,
 			MediaType:       mediaType,
 			MimeType:        contentType,
 			Size:            int64(len(fileBytes)),
