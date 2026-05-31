@@ -316,7 +316,12 @@ func main() {
 	// Postgres недоступен или uploads-dir не writable. Frontend смотрит на
 	// status code: 200=OK, 503=service down.
 	app.Get("/health", func(c *fiber.Ctx) error {
-		checks := fiber.Map{"db": "ok", "uploads": "ok"}
+		checks := fiber.Map{"db": "ok"}
+		if r2Client != nil {
+			checks["storage"] = "r2"
+		} else {
+			checks["storage"] = "local"
+		}
 		statusCode := fiber.StatusOK
 		// DB ping с коротким таймаутом — не блочим health-check надолго.
 		dbCtx, dbCancel := context.WithTimeout(c.Context(), 2*time.Second)
@@ -325,14 +330,16 @@ func main() {
 			checks["db"] = err.Error()
 			statusCode = fiber.StatusServiceUnavailable
 		}
-		// Uploads-dir writable? Open+close файла с unique-именем.
-		probe := fmt.Sprintf("uploads/.health_%d", time.Now().UnixNano())
-		if f, err := os.Create(probe); err != nil {
-			checks["uploads"] = err.Error()
-			statusCode = fiber.StatusServiceUnavailable
-		} else {
-			f.Close()
-			os.Remove(probe)
+		// Uploads-dir writable only when using local storage.
+		if r2Client == nil {
+			probe := fmt.Sprintf("uploads/.health_%d", time.Now().UnixNano())
+			if f, err := os.Create(probe); err != nil {
+				checks["storage"] = err.Error()
+				statusCode = fiber.StatusServiceUnavailable
+			} else {
+				f.Close()
+				os.Remove(probe)
+			}
 		}
 		return c.Status(statusCode).JSON(fiber.Map{
 			"status":  map[bool]string{true: "ok", false: "down"}[statusCode == fiber.StatusOK],
