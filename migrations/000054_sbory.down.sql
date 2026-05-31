@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS sbor_members;
+DROP TABLE IF EXISTS sbory;

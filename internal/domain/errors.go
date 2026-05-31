@@ -1,0 +1,33 @@
+package domain
+
+import "errors"
+
+var (
+	ErrNotFound          = errors.New("not found")
+	ErrAlreadyExists     = errors.New("already exists")
+	ErrUnauthorized      = errors.New("unauthorized")
+	ErrForbidden         = errors.New("forbidden")
+	ErrInvalidInput      = errors.New("invalid input")
+	ErrInternalServer    = errors.New("internal server error")
+	ErrTokenExpired      = errors.New("token expired")
+	ErrTokenInvalid      = errors.New("token invalid")
+	ErrPasswordMismatch  = errors.New("password mismatch")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrPostNotFound      = errors.New("post not found")
+	ErrStoryNotFound     = errors.New("story not found")
+	ErrCommentNotFound   = errors.New("comment not found")
+	ErrAlreadyFollowing  = errors.New("already following")
+	ErrNotFollowing      = errors.New("not following")
+	ErrAlreadyLiked      = errors.New("already liked")
+	ErrNotLiked          = errors.New("not liked")
+	ErrAlreadySaved      = errors.New("already saved")
+	ErrNotSaved          = errors.New("not saved")
+	ErrSelfFollow        = errors.New("cannot follow yourself")
+	ErrPrivateAccount    = errors.New("account is private")
+	ErrStoryExpired      = errors.New("story has expired")
+	ErrHighlightNotFound = errors.New("highlight not found")
+	ErrConsentRequired   = errors.New("consent to terms is required")
+	ErrPlaylistNotFound  = errors.New("playlist not found")
+	ErrRateLimited       = errors.New("rate limited")
+	ErrLastAdmin         = errors.New("last admin in group cannot be removed or demoted")
+)

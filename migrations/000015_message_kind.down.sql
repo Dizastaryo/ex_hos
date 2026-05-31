@@ -1,0 +1,5 @@
+DROP INDEX IF EXISTS idx_messages_attached_post;
+ALTER TABLE messages DROP COLUMN IF EXISTS attached_post_id;
+ALTER TABLE messages DROP COLUMN IF EXISTS kind;
+ALTER TABLE messages ALTER COLUMN text SET NOT NULL;
+ALTER TABLE messages ALTER COLUMN text DROP DEFAULT;

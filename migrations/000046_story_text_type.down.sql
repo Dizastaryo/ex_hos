@@ -1,0 +1,2 @@
+ALTER TABLE stories ALTER COLUMN media_url SET NOT NULL;
+ALTER TABLE stories DROP COLUMN bg_color;

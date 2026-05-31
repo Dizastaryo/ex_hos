@@ -1,0 +1,1 @@
+ALTER TABLE posts DROP COLUMN IF EXISTS thumbnail_url;

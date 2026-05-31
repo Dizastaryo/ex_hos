@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS video_likes;
+DROP TABLE IF EXISTS reel_likes;
+DROP TABLE IF EXISTS reel_views;
+DROP TABLE IF EXISTS video_views;
+DROP TABLE IF EXISTS reels;
+DROP TABLE IF EXISTS audio_tracks;
+DROP TABLE IF EXISTS videos;
+DROP TABLE IF EXISTS video_categories;

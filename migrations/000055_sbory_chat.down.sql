@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_sbory_chat_id;
+ALTER TABLE sbory DROP COLUMN IF EXISTS chat_id;

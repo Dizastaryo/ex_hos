@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS story_poll_votes;
+ALTER TABLE stories DROP COLUMN IF EXISTS poll;

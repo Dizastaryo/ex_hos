@@ -1,0 +1,16 @@
+DROP INDEX IF EXISTS idx_posts_caption_trgm;
+DROP INDEX IF EXISTS idx_users_full_name_trgm;
+DROP INDEX IF EXISTS idx_users_username_trgm;
+DROP INDEX IF EXISTS idx_refresh_tokens_user_id;
+DROP INDEX IF EXISTS idx_refresh_tokens_token;
+DROP INDEX IF EXISTS idx_notifications_user_id;
+DROP INDEX IF EXISTS idx_follows_following;
+DROP INDEX IF EXISTS idx_follows_follower;
+DROP INDEX IF EXISTS idx_likes_user_id;
+DROP INDEX IF EXISTS idx_likes_entity;
+DROP INDEX IF EXISTS idx_comments_parent_id;
+DROP INDEX IF EXISTS idx_comments_post_id;
+DROP INDEX IF EXISTS idx_stories_expires_at;
+DROP INDEX IF EXISTS idx_stories_user_id;
+DROP INDEX IF EXISTS idx_posts_created_at;
+DROP INDEX IF EXISTS idx_posts_user_id;
