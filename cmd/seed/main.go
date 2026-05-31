@@ -50,6 +50,30 @@ func uid(prefix string, n int) string {
 	return fmt.Sprintf("%s%012d", prefix, n)
 }
 
+// r2BaseURL is set in main() from cfg.R2.PublicURL.
+// When non-empty, mediaURL() prefixes local /uploads/… paths with it so that
+// re-seeding a fresh DB puts the correct R2 URLs (not stale local paths).
+var r2BaseURL string
+
+// mediaURL converts a local /uploads/… path to an absolute URL.
+// If R2 is configured, returns the R2 public URL. Otherwise returns the path as-is.
+func mediaURL(localPath string) string {
+	if r2BaseURL != "" {
+		// localPath is like "/uploads/seed/…" — strip leading slash before joining.
+		return r2BaseURL + "/" + strings.TrimPrefix(localPath, "/")
+	}
+	return localPath
+}
+
+// mediaURLs converts a slice of local paths to absolute URLs.
+func mediaURLs(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = mediaURL(p)
+	}
+	return out
+}
+
 type seedUser struct {
 	id       string
 	username string
@@ -62,28 +86,32 @@ type seedUser struct {
 	devicePub string
 }
 
-var mainUsers = []seedUser{
-	{uid(pUser, 1), "aidana_kz", "+77003309616", "Айдана Каримова", "Фотограф и путешественница. Алматы → весь мир.", "/uploads/seed/avatars/u1_aidana_kz.png", "female", true, "DEVICE_A001"},
-	{uid(pUser, 2), "arman_dev", "+77001112233", "Арман Тулегенов", "Full-stack разработчик. Без кофе никуда.", "/uploads/seed/avatars/u2_arman_dev.png", "male", false, "DEVICE_A002"},
-	{uid(pUser, 3), "dana_adventures", "+77002223344", "Дана Оспанова", "Горы, книги, закаты. Иногда море.", "/uploads/seed/avatars/u3_dana_adventures.png", "female", false, "DEVICE_A003"},
-	{uid(pUser, 4), "timur_photo", "+77003334455", "Тимур Бекмуратов", "Стрит-фотография Алматы. Каждый день — кадр.", "/uploads/seed/avatars/u4_timur_photo.png", "male", true, "DEVICE_A004"},
-	{uid(pUser, 5), "aisha_fit", "+77004445566", "Айша Нурланкызы", "Фитнес-тренер. Здоровое тело — здоровая жизнь.", "/uploads/seed/avatars/u5_aisha_fit.png", "female", false, "DEVICE_A005"},
-	{uid(pUser, 6), "nursultan_eats", "+77005556677", "Нурсултан Кажимов", "Фуд-блогер. Лучшие места Астаны и Алматы.", "/uploads/seed/avatars/u6_nursultan_eats.png", "male", false, "DEVICE_A006"},
-	{uid(pUser, 7), "zarina_art", "+77006667788", "Зарина Муханова", "Диджитал-художник и иллюстратор. Заказы открыты.", "/uploads/seed/avatars/u7_zarina_art.png", "female", false, "DEVICE_A007"},
-	{uid(pUser, 8), "bekzat_travel", "+77007778899", "Бекзат Асанов", "Путешествую по Центральной Азии. Делюсь маршрутами.", "/uploads/seed/avatars/u8_bekzat_travel.png", "male", false, "DEVICE_A008"},
-	{uid(pUser, 9), "madina_style", "+77008889900", "Мадина Айткали", "Стиль и дизайн. Минимализм с характером.", "/uploads/seed/avatars/u9_madina_style.png", "female", false, "DEVICE_A009"},
-	{uid(pUser, 10), "kairat_music", "+77009990011", "Кайрат Бектуров", "Продюсер и диджей. Электроника, синтвейв.", "/uploads/seed/avatars/u10_kairat_music.png", "male", true, "DEVICE_A010"},
+func mainUsers() []seedUser {
+	return []seedUser{
+		{uid(pUser, 1), "aidana_kz", "+77003309616", "Айдана Каримова", "Фотограф и путешественница. Алматы → весь мир.", mediaURL("/uploads/seed/avatars/u1_aidana_kz.png"), "female", true, "DEVICE_A001"},
+		{uid(pUser, 2), "arman_dev", "+77001112233", "Арман Тулегенов", "Full-stack разработчик. Без кофе никуда.", mediaURL("/uploads/seed/avatars/u2_arman_dev.png"), "male", false, "DEVICE_A002"},
+		{uid(pUser, 3), "dana_adventures", "+77002223344", "Дана Оспанова", "Горы, книги, закаты. Иногда море.", mediaURL("/uploads/seed/avatars/u3_dana_adventures.png"), "female", false, "DEVICE_A003"},
+		{uid(pUser, 4), "timur_photo", "+77003334455", "Тимур Бекмуратов", "Стрит-фотография Алматы. Каждый день — кадр.", mediaURL("/uploads/seed/avatars/u4_timur_photo.png"), "male", true, "DEVICE_A004"},
+		{uid(pUser, 5), "aisha_fit", "+77004445566", "Айша Нурланкызы", "Фитнес-тренер. Здоровое тело — здоровая жизнь.", mediaURL("/uploads/seed/avatars/u5_aisha_fit.png"), "female", false, "DEVICE_A005"},
+		{uid(pUser, 6), "nursultan_eats", "+77005556677", "Нурсултан Кажимов", "Фуд-блогер. Лучшие места Астаны и Алматы.", mediaURL("/uploads/seed/avatars/u6_nursultan_eats.png"), "male", false, "DEVICE_A006"},
+		{uid(pUser, 7), "zarina_art", "+77006667788", "Зарина Муханова", "Диджитал-художник и иллюстратор. Заказы открыты.", mediaURL("/uploads/seed/avatars/u7_zarina_art.png"), "female", false, "DEVICE_A007"},
+		{uid(pUser, 8), "bekzat_travel", "+77007778899", "Бекзат Асанов", "Путешествую по Центральной Азии. Делюсь маршрутами.", mediaURL("/uploads/seed/avatars/u8_bekzat_travel.png"), "male", false, "DEVICE_A008"},
+		{uid(pUser, 9), "madina_style", "+77008889900", "Мадина Айткали", "Стиль и дизайн. Минимализм с характером.", mediaURL("/uploads/seed/avatars/u9_madina_style.png"), "female", false, "DEVICE_A009"},
+		{uid(pUser, 10), "kairat_music", "+77009990011", "Кайрат Бектуров", "Продюсер и диджей. Электроника, синтвейв.", mediaURL("/uploads/seed/avatars/u10_kairat_music.png"), "male", true, "DEVICE_A010"},
+	}
 }
 
-var brandUsers = []seedUser{
-	{uid(pBrand, 1), "almaty_vibes", "+77010000001", "Алматы Vibes", "Городская жизнь Алматы — каждый день.", "/uploads/seed/avatars/b1_almaty_vibes.png", "other", true, ""},
-	{uid(pBrand, 2), "kazakh_chef", "+77010000002", "Казахская кухня", "Рецепты и культура национальной еды.", "/uploads/seed/avatars/b2_kazakh_chef.png", "other", true, ""},
-	{uid(pBrand, 3), "astana_nights", "+77010000003", "Астана Nights", "Ночная жизнь и события столицы.", "/uploads/seed/avatars/b3_astana_nights.png", "other", false, ""},
-	{uid(pBrand, 4), "tech_nomad_kz", "+77010000004", "Tech Nomad KZ", "Технологии и жизнь цифровых кочевников.", "/uploads/seed/avatars/b4_tech_nomad_kz.png", "other", false, ""},
-	{uid(pBrand, 5), "dance_almaty", "+77010000005", "Танцы Алматы", "Танцевальные студии и события города.", "/uploads/seed/avatars/b5_dance_almaty.png", "other", false, ""},
+func brandUsers() []seedUser {
+	return []seedUser{
+		{uid(pBrand, 1), "almaty_vibes", "+77010000001", "Алматы Vibes", "Городская жизнь Алматы — каждый день.", mediaURL("/uploads/seed/avatars/b1_almaty_vibes.png"), "other", true, ""},
+		{uid(pBrand, 2), "kazakh_chef", "+77010000002", "Казахская кухня", "Рецепты и культура национальной еды.", mediaURL("/uploads/seed/avatars/b2_kazakh_chef.png"), "other", true, ""},
+		{uid(pBrand, 3), "astana_nights", "+77010000003", "Астана Nights", "Ночная жизнь и события столицы.", mediaURL("/uploads/seed/avatars/b3_astana_nights.png"), "other", false, ""},
+		{uid(pBrand, 4), "tech_nomad_kz", "+77010000004", "Tech Nomad KZ", "Технологии и жизнь цифровых кочевников.", mediaURL("/uploads/seed/avatars/b4_tech_nomad_kz.png"), "other", false, ""},
+		{uid(pBrand, 5), "dance_almaty", "+77010000005", "Танцы Алматы", "Танцевальные студии и события города.", mediaURL("/uploads/seed/avatars/b5_dance_almaty.png"), "other", false, ""},
+	}
 }
 
-func allUsers() []seedUser { return append(append([]seedUser{}, mainUsers...), brandUsers...) }
+func allUsers() []seedUser { return append(append([]seedUser{}, mainUsers()...), brandUsers()...) }
 
 type seedPost struct {
 	idx        int    // global post index, 1-based
@@ -156,6 +184,9 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+	if cfg.R2.PublicURL != "" {
+		r2BaseURL = strings.TrimRight(cfg.R2.PublicURL, "/")
 	}
 
 	ctx := context.Background()
@@ -288,31 +319,33 @@ func seedAllUsers(ctx context.Context, tx pgx.Tx) error {
 
 func seedAudioTracks(ctx context.Context, tx pgx.Tx) error {
 	// Реальные классические треки из общественного достояния (Wikimedia Commons).
-	// Имя композитора и название произведения совпадают с реальным контентом файла —
-	// больше никаких «Летний гимн от DJ Алматы» с длиной 4 секунды (sound effect).
-	// Длительность пробивается ffprobe'ом из самого файла.
+	// Файлы хранятся в R2 (uploads/seed/audio/). Длительность захардкожена по
+	// реальным значениям из Wikimedia — ffprobe локальных файлов не требуется.
 	tracks := []struct {
 		idx    int
 		title  string
 		artist string
 		genre  string
-		file   string // относительно backend/
+		file   string // путь в R2 (без ведущего /)
+		durSec int    // длительность в секундах (из реального файла)
 	}{
-		{1, "Eine kleine Nachtmusik — 1. Allegro", "Вольфганг Амадей Моцарт", "классика", "uploads/seed/audio/mozart_eine_kleine_allegro.ogg"},
-		{2, "Симфония №40 соль минор — 1. Molto allegro", "Вольфганг Амадей Моцарт", "классика", "uploads/seed/audio/mozart_symphony_40_allegro.ogg"},
-		{3, "Бранденбургский концерт №1 — 1. Allegro", "Иоганн Себастьян Бах", "барокко", "uploads/seed/audio/bach_brandenburg_1_allegro.ogg"},
-		{4, "Симфония №5 до минор — 1. Allegro con brio", "Людвиг ван Бетховен", "классика", "uploads/seed/audio/beethoven_symphony_5_allegro.ogg"},
-		{5, "Ноктюрн соч. 32 №1", "Фредерик Шопен", "романтизм", "uploads/seed/audio/chopin_nocturne_op32_1.ogg"},
-		{6, "«Времена года» — Весна, 1. Allegro", "Антонио Вивальди", "барокко", "uploads/seed/audio/vivaldi_spring_allegro.oga"},
-		{7, "Лунный свет (Clair de Lune)", "Клод Дебюсси", "импрессионизм", "uploads/seed/audio/debussy_clair_de_lune.ogg"},
-		{8, "Лебединое озеро — Сцена (Moderato)", "Пётр Ильич Чайковский", "романтизм", "uploads/seed/audio/tchaikovsky_swan_lake.ogg"},
-		{9, "Утреннее настроение (Пер Гюнт)", "Эдвард Григ", "романтизм", "uploads/seed/audio/grieg_morning_mood.ogg"},
-		{10, "Гимнопедия №1", "Эрик Сати", "импрессионизм", "uploads/seed/audio/satie_gymnopedie_1.ogg"},
+		{1, "Eine kleine Nachtmusik — 1. Allegro", "Вольфганг Амадей Моцарт", "классика", "uploads/seed/audio/mozart_eine_kleine_allegro.ogg", 363},
+		{2, "Симфония №40 соль минор — 1. Molto allegro", "Вольфганг Амадей Моцарт", "классика", "uploads/seed/audio/mozart_symphony_40_allegro.ogg", 346},
+		{3, "Бранденбургский концерт №1 — 1. Allegro", "Иоганн Себастьян Бах", "барокко", "uploads/seed/audio/bach_brandon_1_allegro.ogg", 444},
+		{4, "Симфония №5 до минор — 1. Allegro con brio", "Людвиг ван Бетховен", "классика", "uploads/seed/audio/beethoven_symphony_5_allegro.ogg", 455},
+		{5, "Ноктюрн соч. 32 №1", "Фредерик Шопен", "романтизм", "uploads/seed/audio/chopin_nocturne_op32_1.ogg", 326},
+		{6, "«Времена года» — Весна, 1. Allegro", "Антонио Вивальди", "барокко", "uploads/seed/audio/vivaldi_spring_allegro.oga", 210},
+		{7, "Лунный свет (Clair de Lune)", "Клод Дебюсси", "импрессионизм", "uploads/seed/audio/debussy_clair_de_lune.ogg", 278},
+		{8, "Лебединое озеро — Сцена (Moderato)", "Пётр Ильич Чайковский", "романтизм", "uploads/seed/audio/tchaikovsky_swan_lake.ogg", 227},
+		{9, "Утреннее настроение (Пер Гюнт)", "Эдвард Григ", "романтизм", "uploads/seed/audio/grieg_morning_mood.ogg", 187},
+		{10, "Гимнопедия №1", "Эрик Сати", "импрессионизм", "uploads/seed/audio/satie_gymnopedie_1.ogg", 213},
 	}
 	for _, t := range tracks {
-		duration := probe.DurationSeconds(t.file)
-		if duration == 0 {
-			return fmt.Errorf("audio probe failed for %s — file missing or ffprobe not on PATH (run scripts/seed_assets/download.ps1 first)", t.file)
+		// Попробуем получить точную длительность через ffprobe если файл есть локально.
+		// Если нет — используем захардкоженное значение (файлы в R2).
+		dur := probe.DurationSeconds(t.file)
+		if dur == 0 {
+			dur = t.durSec
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO audio_tracks (id, title, artist, cover_url, audio_url, duration_seconds, genre)
@@ -325,9 +358,9 @@ func seedAudioTracks(ctx context.Context, tx pgx.Tx) error {
 				duration_seconds = EXCLUDED.duration_seconds,
 				genre = EXCLUDED.genre`,
 			uid(pAudio, t.idx), t.title, t.artist,
-			fmt.Sprintf("/uploads/seed/covers/a%d.jpg", t.idx),
-			"/"+t.file,
-			duration, t.genre)
+			mediaURL(fmt.Sprintf("/uploads/seed/covers/a%d.jpg", t.idx)),
+			mediaURL("/"+t.file),
+			dur, t.genre)
 		if err != nil {
 			return err
 		}
@@ -377,7 +410,7 @@ func seedPosts(ctx context.Context, tx pgx.Tx) error {
 				media_urls = EXCLUDED.media_urls,
 				media_types = EXCLUDED.media_types,
 				location = EXCLUDED.location`,
-			postID, ownerID, p.caption, p.mediaURLs, p.mediaTypes, p.location)
+			postID, ownerID, p.caption, mediaURLs(p.mediaURLs), p.mediaTypes, p.location)
 		if err != nil {
 			return fmt.Errorf("upsert post %d: %w", p.idx, err)
 		}
@@ -389,7 +422,7 @@ func seedPosts(ctx context.Context, tx pgx.Tx) error {
 
 func seedStories(ctx context.Context, tx pgx.Tx) error {
 	// One active story per main user.
-	for i := 1; i <= len(mainUsers); i++ {
+	for i := 1; i <= len(mainUsers()); i++ {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO stories (id, user_id, media_url, media_type, text_overlay, expires_at)
 			VALUES ($1,$2,$3,'image',$4, NOW() + INTERVAL '20 hours')
@@ -398,7 +431,7 @@ func seedStories(ctx context.Context, tx pgx.Tx) error {
 				text_overlay = EXCLUDED.text_overlay,
 				expires_at = EXCLUDED.expires_at`,
 			uid(pStory, i), uid(pUser, i),
-			fmt.Sprintf("/uploads/seed/stories/s%d.jpg", i),
+			mediaURL(fmt.Sprintf("/uploads/seed/stories/s%d.jpg", i)),
 			fmt.Sprintf("Сторис %d", i))
 		if err != nil {
 			return err
@@ -413,7 +446,7 @@ func seedStories(ctx context.Context, tx pgx.Tx) error {
 				media_url = EXCLUDED.media_url,
 				expires_at = EXCLUDED.expires_at`,
 			uid(pStory, 100+i), uid(pUser, i),
-			fmt.Sprintf("/uploads/seed/stories/hl%d.jpg", i))
+			mediaURL(fmt.Sprintf("/uploads/seed/stories/hl%d.jpg", i)))
 		if err != nil {
 			return err
 		}
@@ -432,7 +465,7 @@ func seedHighlights(ctx context.Context, tx pgx.Tx) error {
 				cover_url = EXCLUDED.cover_url`,
 			hlID, uid(pUser, i),
 			[]string{"Поездки", "Студия", "Природа", "Друзья", "Любимое"}[(i-1)%5],
-			fmt.Sprintf("/uploads/seed/highlights/h%d.jpg", i))
+			mediaURL(fmt.Sprintf("/uploads/seed/highlights/h%d.jpg", i)))
 		if err != nil {
 			return err
 		}
@@ -462,9 +495,9 @@ func seedComments(ctx context.Context, tx pgx.Tx) error {
 	for _, p := range posts {
 		// Each post gets 2-3 comments from users that aren't the owner. Deterministic.
 		for k := 1; k <= 3; k++ {
-			commenterIdx := ((p.idx*7 + k*11) % len(mainUsers)) + 1
+			commenterIdx := ((p.idx*7 + k*11) % len(mainUsers())) + 1
 			if commenterIdx == p.ownerIdx {
-				commenterIdx = (commenterIdx % len(mainUsers)) + 1
+				commenterIdx = (commenterIdx % len(mainUsers())) + 1
 			}
 			tmpl := commentTemplates[(p.idx+k)%len(commentTemplates)]
 			cnt++
@@ -640,46 +673,54 @@ func seedConversations(ctx context.Context, tx pgx.Tx) error {
 // ---------- Videos / Reels ----------
 
 func seedVideos(ctx context.Context, tx pgx.Tx) error {
-	// Real local mp4 files в backend/uploads/videos/. Cycle through them so we
-	// have 6 entries even though there are only 3 source files — content
-	// duplication is fine for seed purposes. Длительность пробивается ffprobe'ом.
-	// Седьмая запись — реальный полнометражный public-domain фильм Чарли Чаплина
-	// (≈25 минут), хранится в uploads/seed/movies/.
-	clips := []string{"forest", "synth_build", "tokyo_3am"}
+	// Файлы хранятся в R2 (uploads/videos/). Длительность захардкожена —
+	// ffprobe локальных файлов не требуется.
+	clips := []struct {
+		name   string
+		durSec int
+	}{
+		{"forest", 30},
+		{"synth_build", 28},
+		{"tokyo_3am", 32},
+	}
 	videos := []struct {
 		idx       int
 		owner     int
 		category  int
 		title     string
 		desc      string
-		videoPath string // empty → use clips[idx-1]; non-empty → custom path
-		thumbPath string // same convention
+		videoPath string // пусто → берём из clips по idx; иначе путь в R2
+		thumbPath string
+		durSec    int // 0 → берём из clips
 	}{
-		{1, 1, 1, "Алматы — травел-влог за один день", "", "", ""},
-		{2, 4, 1, "Фото-прогулка зимой по центру города", "", "", ""},
-		{3, 5, 4, "Подготовка к марафону — день 30", "", "", ""},
-		{4, 6, 1, "Мастер-класс: настоящий узбекский плов", "", "", ""},
-		{5, 7, 2, "Процесс работы над иллюстрацией", "", "", ""},
-		{6, 10, 2, "Лайв-сет от DJ Кайрата — премьера", "", "", ""},
-		{8, 3, 3, "Прогулка по городу — утренний обзор", "Утренняя прогулка по центру города. Атмосфера и ритм улиц.", "uploads/videos/city_walk.mp4", "uploads/videos/city_walk_thumb.jpg"},
-		{9, 8, 1, "Природа и утренний свет", "Рассвет в горах — спокойствие и красота природы.", "uploads/videos/nature_morning.mp4", "uploads/videos/nature_morning_thumb.jpg"},
-		{10, 2, 3, "Ночная поездка по городу", "Огни ночного города из окна машины. Атмосферный таймлапс.", "uploads/videos/night_drive.mp4", "uploads/videos/night_drive_thumb.jpg"},
-		{11, 10, 2, "Запись в студии — создание трека", "Процесс создания электронного трека от идеи до мастеринга.", "uploads/videos/music_studio.mp4", "uploads/videos/music_studio_thumb.jpg"},
-		{12, 9, 1, "Модный показ Алматы 2026", "Обзор модного показа локальных дизайнеров в Алматы.", "uploads/videos/forest.mp4", "uploads/videos/forest_thumb.jpg"},
+		{1, 1, 1, "Алматы — травел-влог за один день", "", "", "", 0},
+		{2, 4, 1, "Фото-прогулка зимой по центру города", "", "", "", 0},
+		{3, 5, 4, "Подготовка к марафону — день 30", "", "", "", 0},
+		{4, 6, 1, "Мастер-класс: настоящий узбекский плов", "", "", "", 0},
+		{5, 7, 2, "Процесс работы над иллюстрацией", "", "", "", 0},
+		{6, 10, 2, "Лайв-сет от DJ Кайрата — премьера", "", "", "", 0},
+		{8, 3, 3, "Прогулка по городу — утренний обзор", "Утренняя прогулка по центру города. Атмосфера и ритм улиц.", "uploads/videos/city_walk.mp4", "uploads/videos/city_walk_thumb.jpg", 58},
+		{9, 8, 1, "Природа и утренний свет", "Рассвет в горах — спокойствие и красота природы.", "uploads/videos/nature_morning.mp4", "uploads/videos/nature_morning_thumb.jpg", 62},
+		{10, 2, 3, "Ночная поездка по городу", "Огни ночного города из окна машины. Атмосферный таймлапс.", "uploads/videos/night_drive.mp4", "uploads/videos/night_drive_thumb.jpg", 55},
+		{11, 10, 2, "Запись в студии — создание трека", "Процесс создания электронного трека от идеи до мастеринга.", "uploads/videos/music_studio.mp4", "uploads/videos/music_studio_thumb.jpg", 60},
+		{12, 9, 1, "Модный показ Алматы 2026", "Обзор модного показа локальных дизайнеров в Алматы.", "uploads/videos/forest.mp4", "uploads/videos/forest_thumb.jpg", 30},
 	}
 	for _, v := range videos {
 		var videoFile, thumbFile string
+		var durSec int
 		if v.videoPath != "" {
 			videoFile = v.videoPath
 			thumbFile = v.thumbPath
+			durSec = v.durSec
 		} else {
-			f := clips[(v.idx-1)%len(clips)]
-			videoFile = fmt.Sprintf("uploads/videos/%s.mp4", f)
-			thumbFile = fmt.Sprintf("uploads/videos/%s_thumb.jpg", f)
+			c := clips[(v.idx-1)%len(clips)]
+			videoFile = fmt.Sprintf("uploads/videos/%s.mp4", c.name)
+			thumbFile = fmt.Sprintf("uploads/videos/%s_thumb.jpg", c.name)
+			durSec = c.durSec
 		}
-		duration := probe.DurationSeconds(videoFile)
-		if duration == 0 {
-			return fmt.Errorf("video probe failed for %s — file missing or ffprobe not on PATH", videoFile)
+		// Try local probe first (dev env); fall back to hardcoded value.
+		if d := probe.DurationSeconds(videoFile); d > 0 {
+			durSec = d
 		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO videos (id, user_id, title, description, video_url, thumbnail_url, duration_seconds, category_id, resolution)
@@ -692,9 +733,9 @@ func seedVideos(ctx context.Context, tx pgx.Tx) error {
 				duration_seconds = EXCLUDED.duration_seconds,
 				category_id = EXCLUDED.category_id`,
 			uid(pVideo, v.idx), uid(pUser, v.owner), v.title, v.desc,
-			"/"+videoFile,
-			"/"+thumbFile,
-			duration, uid(pVidCat, v.category))
+			mediaURL("/"+videoFile),
+			mediaURL("/"+thumbFile),
+			durSec, uid(pVidCat, v.category))
 		if err != nil {
 			return err
 		}
@@ -729,8 +770,8 @@ func seedVideoPosts(ctx context.Context, tx pgx.Tx) error {
 	}
 	for _, r := range rows {
 		f := reelFiles[(r.idx-1)%len(reelFiles)]
-		mediaURL := fmt.Sprintf("/uploads/reels/%s.mp4", f)
-		thumbURL := fmt.Sprintf("/uploads/reels/thumbs/%s_thumb.jpg", f)
+		reelURL := mediaURL(fmt.Sprintf("/uploads/reels/%s.mp4", f))
+		thumbURL := mediaURL(fmt.Sprintf("/uploads/reels/thumbs/%s_thumb.jpg", f))
 		caption := r.caption
 		if len(r.hashtags) > 0 {
 			tags := ""
@@ -752,7 +793,7 @@ func seedVideoPosts(ctx context.Context, tx pgx.Tx) error {
 				audio_track_id = EXCLUDED.audio_track_id,
 				thumbnail_url = EXCLUDED.thumbnail_url`,
 			uid(pReel, r.idx), uid(pUser, r.owner), caption,
-			[]string{mediaURL}, uid(pAudio, r.audio), thumbURL)
+			[]string{reelURL}, uid(pAudio, r.audio), thumbURL)
 		if err != nil {
 			return err
 		}
@@ -763,36 +804,36 @@ func seedVideoPosts(ctx context.Context, tx pgx.Tx) error {
 // ---------- Library ----------
 
 func seedFiles(ctx context.Context, tx pgx.Tx) error {
-	// All files point at real local blobs in backend/uploads/seed/library/.
-	// Sizes are read from disk so the displayed size matches what the user
-	// actually downloads — never hardcoded.
+	// Файлы хранятся в R2 (uploads/seed/library/). Размер читается с диска если
+	// файл есть локально, иначе используется приблизительное значение.
 	files := []struct {
 		idx      int
 		owner    int
 		category int
 		name     string
 		mime     string
-		path     string // disk-relative; used to stat real size + serve via static handler
+		path     string // путь в R2 (без ведущего /)
+		sizeB    int64  // приблизительный размер (bytes) — используется если файл не найден локально
 	}{
-		{1, 2, 1, "План проекта.pdf", "application/pdf", "uploads/seed/library/project_plan.pdf"},
-		{2, 6, 1, "Книга рецептов.pdf", "application/pdf", "uploads/seed/library/recipe_book.pdf"},
-		{3, 7, 4, "Набор кистей.zip", "application/zip", "uploads/seed/library/brushes_pack.zip"},
-		{4, 10, 2, "Лайв-микс.mp3", "audio/mpeg", "uploads/seed/library/live_mix.mp3"},
-		{5, 5, 1, "Программа тренировок.pdf", "application/pdf", "uploads/seed/library/workout_plan.pdf"},
-		{6, 1, 4, "Обои Алматы.zip", "application/zip", "uploads/seed/library/almaty_wallpapers.zip"},
-		{7, 3, 1, "Гид путешественника.pdf", "application/pdf", "uploads/seed/library/travel_guide.pdf"},
-		{8, 4, 1, "Советы по фотографии.pdf", "application/pdf", "uploads/seed/library/photography_tips.pdf"},
-		{9, 10, 1, "Основы теории музыки.pdf", "application/pdf", "uploads/seed/library/music_theory.pdf"},
-		{10, 4, 4, "Фото-гид по Алматы.zip", "application/zip", "uploads/seed/library/photo_guide.zip"},
-		{11, 6, 5, "Гид по ресторанам.zip", "application/zip", "uploads/seed/library/restaurant_guide.zip"},
-		{12, 10, 2, "Чилл-микс.mp3", "audio/mpeg", "uploads/seed/library/chill_mix.mp3"},
+		{1, 2, 1, "План проекта.pdf", "application/pdf", "uploads/seed/library/project_plan.pdf", 512 * 1024},
+		{2, 6, 1, "Книга рецептов.pdf", "application/pdf", "uploads/seed/library/recipe_book.pdf", 2 * 1024 * 1024},
+		{3, 7, 4, "Набор кистей.zip", "application/zip", "uploads/seed/library/brushes_pack.zip", 8 * 1024 * 1024},
+		{4, 10, 2, "Лайв-микс.mp3", "audio/mpeg", "uploads/seed/library/live_mix.mp3", 15 * 1024 * 1024},
+		{5, 5, 1, "Программа тренировок.pdf", "application/pdf", "uploads/seed/library/workout_plan.pdf", 384 * 1024},
+		{6, 1, 4, "Обои Алматы.zip", "application/zip", "uploads/seed/library/almaty_wallpapers.zip", 12 * 1024 * 1024},
+		{7, 3, 1, "Гид путешественника.pdf", "application/pdf", "uploads/seed/library/travel_guide.pdf", 1024 * 1024},
+		{8, 4, 1, "Советы по фотографии.pdf", "application/pdf", "uploads/seed/library/photography_tips.pdf", 768 * 1024},
+		{9, 10, 1, "Основы теории музыки.pdf", "application/pdf", "uploads/seed/library/music_theory.pdf", 896 * 1024},
+		{10, 4, 4, "Фото-гид по Алматы.zip", "application/zip", "uploads/seed/library/photo_guide.zip", 18 * 1024 * 1024},
+		{11, 6, 5, "Гид по ресторанам.zip", "application/zip", "uploads/seed/library/restaurant_guide.zip", 5 * 1024 * 1024},
+		{12, 10, 2, "Чилл-микс.mp3", "audio/mpeg", "uploads/seed/library/chill_mix.mp3", 12 * 1024 * 1024},
 	}
 	for _, f := range files {
-		stat, err := os.Stat(f.path)
-		if err != nil {
-			return fmt.Errorf("seed file missing on disk: %s — run scripts/seed_assets/download.ps1 first: %w", f.path, err)
+		size := f.sizeB
+		if stat, err := os.Stat(f.path); err == nil {
+			size = stat.Size()
 		}
-		_, err = tx.Exec(ctx, `
+		_, err := tx.Exec(ctx, `
 			INSERT INTO files (id, user_id, filename, file_url, mime_type, file_size, category_id, description)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,'')
 			ON CONFLICT (id) DO UPDATE SET
@@ -802,8 +843,8 @@ func seedFiles(ctx context.Context, tx pgx.Tx) error {
 				file_size = EXCLUDED.file_size,
 				category_id = EXCLUDED.category_id`,
 			uid(pFile, f.idx), uid(pUser, f.owner), f.name,
-			"/"+f.path,
-			f.mime, stat.Size(), uid(pFileCat, f.category))
+			mediaURL("/"+f.path),
+			f.mime, size, uid(pFileCat, f.category))
 		if err != nil {
 			return err
 		}
