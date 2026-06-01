@@ -5,11 +5,10 @@ import "time"
 type Room struct {
 	ID          string    `json:"id"`
 	CreatorID   string    `json:"creator_id"`
-	Type        string    `json:"type"` // "text" | "voice"
+	Type        string    `json:"type"` // always "voice"
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
 	CoverURL    string    `json:"cover_url,omitempty"`
-	IsPublic    bool      `json:"is_public"`
 	IsActive    bool      `json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
 
@@ -48,12 +47,11 @@ type RoomMessage struct {
 }
 
 type CreateRoomRequest struct {
-	// Type and IsPublic are overridden by the service; clients may omit them.
+	// Type is overridden by the service to "voice"; clients may omit it.
 	Type        string `json:"type"`
 	Name        string `json:"name"        validate:"required,min=1,max=120"`
 	Description string `json:"description" validate:"omitempty,max=500"`
 	CoverURL    string `json:"cover_url"   validate:"omitempty,max=500"`
-	IsPublic    bool   `json:"is_public"`
 }
 
 type InviteMemberRequest struct {
@@ -78,11 +76,10 @@ type RoomMember struct {
 	JoinedAt  time.Time `json:"joined_at"`
 }
 
-var ErrRoomNotFound  = newRoomErr("room not found")
-var ErrRoomClosed    = newRoomErr("room is closed")
-var ErrNotInRoom     = newRoomErr("not a member of this room")
-var ErrPrivateRoom   = newRoomErr("room is private — invite only")
-var ErrNotInVoice    = newRoomErr("not in voice channel")
+var ErrRoomNotFound = newRoomErr("room not found")
+var ErrRoomClosed   = newRoomErr("room is closed")
+var ErrNotInRoom    = newRoomErr("not a member of this room")
+var ErrNotInVoice   = newRoomErr("not in voice channel")
 
 func newRoomErr(s string) error { return roomErrString(s) }
 

@@ -79,8 +79,8 @@ func (h *RoomHandler) Join(c *fiber.Ctx) error {
 			return respondError(c, fiber.StatusNotFound, "room not found")
 		case domain.ErrRoomClosed:
 			return respondError(c, fiber.StatusGone, "room is closed")
-		case domain.ErrPrivateRoom, domain.ErrForbidden:
-			return respondError(c, fiber.StatusForbidden, "room is private — you must be invited")
+		case domain.ErrForbidden:
+			return respondError(c, fiber.StatusForbidden, "room is invite-only")
 		}
 		h.logger.Error("join room", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to join room")

@@ -23,12 +23,12 @@ func (r *RoomRepository) Create(ctx context.Context, req *domain.CreateRoomReque
 	room := &domain.Room{}
 	err := r.db.Pool.QueryRow(ctx, `
 		INSERT INTO rooms (creator_id, type, name, description, cover_url, is_public)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		RETURNING id, creator_id, type, name, description, cover_url, is_public, is_active, created_at`,
-		creatorID, req.Type, req.Name, req.Description, req.CoverURL, req.IsPublic,
+		VALUES ($1,$2,$3,$4,$5,false)
+		RETURNING id, creator_id, type, name, description, cover_url, is_active, created_at`,
+		creatorID, req.Type, req.Name, req.Description, req.CoverURL,
 	).Scan(
 		&room.ID, &room.CreatorID, &room.Type, &room.Name,
-		&room.Description, &room.CoverURL, &room.IsPublic, &room.IsActive, &room.CreatedAt,
+		&room.Description, &room.CoverURL, &room.IsActive, &room.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
@@ -53,7 +53,7 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 	room := &domain.Room{}
 	err := r.db.Pool.QueryRow(ctx, `
 		SELECT r.id, r.creator_id, r.type, r.name, r.description, r.cover_url,
-		       r.is_public, r.is_active, r.created_at,
+		       r.is_active, r.created_at,
 		       u.full_name AS creator_name,
 		       COUNT(DISTINCT rp.user_id)::int AS participant_count,
 		       EXISTS(SELECT 1 FROM room_participants WHERE room_id=r.id AND user_id=$2) AS is_joined,
@@ -73,7 +73,7 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 		id, viewerID,
 	).Scan(
 		&room.ID, &room.CreatorID, &room.Type, &room.Name, &room.Description, &room.CoverURL,
-		&room.IsPublic, &room.IsActive, &room.CreatedAt,
+		&room.IsActive, &room.CreatedAt,
 		&room.CreatorName, &room.ParticipantCount, &room.IsJoined, &room.IsMuted, &room.IsAdmin,
 	)
 	if err == pgx.ErrNoRows {
@@ -82,8 +82,8 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 	if err != nil {
 		return nil, fmt.Errorf("get room: %w", err)
 	}
-	// Private rooms are only accessible to members.
-	if !room.IsPublic && !room.IsJoined {
+	// Rooms are invite-only: only members may access.
+	if !room.IsJoined {
 		return nil, domain.ErrForbidden
 	}
 	room.Participants = r.getParticipants(ctx, id)
@@ -106,18 +106,15 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offset int) ([]*domain.Room, error) {
 	rows, err := r.db.Pool.Query(ctx, `
 		SELECT r.id, r.creator_id, r.type, r.name, r.description, r.cover_url,
-		       r.is_public, r.is_active, r.created_at,
+		       r.is_active, r.created_at,
 		       u.full_name AS creator_name,
 		       COUNT(DISTINCT rp.user_id)::int AS participant_count,
-		       EXISTS(SELECT 1 FROM room_participants WHERE room_id=r.id AND user_id=$1) AS is_joined
+		       true AS is_joined
 		FROM rooms r
 		JOIN users u ON u.id = r.creator_id
+		JOIN room_participants rm ON rm.room_id = r.id AND rm.user_id = $1
 		LEFT JOIN room_participants rp ON rp.room_id = r.id
 		WHERE r.is_active
-		  AND (r.is_public OR EXISTS(
-		           SELECT 1 FROM room_participants
-		           WHERE room_id = r.id AND user_id = $1
-		       ))
 		GROUP BY r.id, u.full_name
 		ORDER BY participant_count DESC, r.created_at DESC
 		LIMIT $2 OFFSET $3`,
@@ -133,7 +130,7 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 		room := &domain.Room{}
 		if err := rows.Scan(
 			&room.ID, &room.CreatorID, &room.Type, &room.Name, &room.Description, &room.CoverURL,
-			&room.IsPublic, &room.IsActive, &room.CreatedAt,
+			&room.IsActive, &room.CreatedAt,
 			&room.CreatorName, &room.ParticipantCount, &room.IsJoined,
 		); err != nil {
 			return nil, err
@@ -151,26 +148,19 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 
 // ─── Join / Leave ─────────────────────────────────────────────────
 
-// Join adds a user to a room. For private rooms it is blocked — use InviteMember instead.
+// Join is disabled — all rooms are invite-only. Use InviteMember instead.
 func (r *RoomRepository) Join(ctx context.Context, roomID, userID string) error {
-	var isPublic bool
+	var exists bool
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT is_public FROM rooms WHERE id=$1`, roomID,
-	).Scan(&isPublic)
-	if err == pgx.ErrNoRows {
-		return domain.ErrRoomNotFound
-	}
+		`SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1)`, roomID,
+	).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("join room check: %w", err)
 	}
-	if !isPublic {
-		return domain.ErrPrivateRoom
+	if !exists {
+		return domain.ErrRoomNotFound
 	}
-	_, err = r.db.Pool.Exec(ctx,
-		`INSERT INTO room_participants (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-		roomID, userID,
-	)
-	return err
+	return domain.ErrForbidden
 }
 
 // InviteMember adds a user to a private room. Creator or any admin may do this.

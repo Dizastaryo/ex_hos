@@ -22,9 +22,8 @@ func NewRoomService(repo *postgres.RoomRepository, hub *ws.Hub, logger *zap.Logg
 }
 
 func (s *RoomService) Create(ctx context.Context, creatorID string, req *domain.CreateRoomRequest) (*domain.Room, error) {
-	// All rooms are voice+text and private — regardless of what the client sends.
+	// All rooms are voice — regardless of what the client sends.
 	req.Type = "voice"
-	req.IsPublic = false
 	room, err := s.repo.Create(ctx, req, creatorID)
 	if err != nil {
 		return nil, fmt.Errorf("create room: %w", err)
@@ -50,7 +49,7 @@ func (s *RoomService) List(ctx context.Context, viewerID string, page, limit int
 }
 
 func (s *RoomService) Join(ctx context.Context, roomID, userID string) (*domain.Room, error) {
-	// repo.Join already checks is_public; private rooms return ErrPrivateRoom.
+	// All rooms are invite-only; repo.Join always returns ErrForbidden.
 	if err := s.repo.Join(ctx, roomID, userID); err != nil {
 		return nil, err
 	}
