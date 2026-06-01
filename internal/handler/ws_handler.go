@@ -214,6 +214,19 @@ func (h *WSHandler) fanOutGroupCall(senderID, eventType string, payload map[stri
 	}
 	payload["from_user_id"] = senderID
 
+	// Обогащаем payload username'ом sender'а — аналогично relayCallEvent для
+	// call.invite. Без этого групповой звонок показывает пустое имя инициатора.
+	if h.userRepo != nil {
+		// L-4: defer ucancel чтобы контекст не утёк при раннем return или panic.
+		uctx, ucancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer ucancel()
+		if u, uerr := h.userRepo.GetByID(uctx, senderID); uerr == nil && u != nil {
+			payload["from_username"] = u.Username
+			payload["from_full_name"] = u.FullName
+			payload["from_avatar"] = u.AvatarURL
+		}
+	}
+
 	// «.join» → others получают «.member.joined». «.leave» → «.member.left».
 	// «.invite» проходит как есть.
 	outType := eventType
