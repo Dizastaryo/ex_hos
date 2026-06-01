@@ -165,6 +165,37 @@ func (h *RoomHandler) Leave(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "left room"}, nil)
 }
 
+// POST /api/v1/rooms/:id/voice
+func (h *RoomHandler) JoinVoice(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := middleware.GetUserID(c)
+	if err := h.svc.JoinVoice(c.Context(), id, userID); err != nil {
+		switch err {
+		case domain.ErrNotInRoom:
+			return respondError(c, fiber.StatusForbidden, "you must be a room member to join voice")
+		case domain.ErrRoomNotFound:
+			return respondError(c, fiber.StatusNotFound, "room not found")
+		}
+		h.logger.Error("join voice", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to join voice")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "joined voice"}, nil)
+}
+
+// DELETE /api/v1/rooms/:id/voice
+func (h *RoomHandler) LeaveVoice(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := middleware.GetUserID(c)
+	if err := h.svc.LeaveVoice(c.Context(), id, userID); err != nil {
+		if err == domain.ErrNotInVoice {
+			return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "not in voice"}, nil)
+		}
+		h.logger.Error("leave voice", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to leave voice")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "left voice"}, nil)
+}
+
 // PATCH /api/v1/rooms/:id/mute
 func (h *RoomHandler) ToggleMute(c *fiber.Ctx) error {
 	id := c.Params("id")

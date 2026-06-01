@@ -88,6 +88,16 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 	}
 	room.Participants = r.getParticipants(ctx, id)
 	room.LastMessage, room.LastMessageAt = r.getLastMessage(ctx, id)
+	// Voice channel data
+	vp := r.getVoiceParticipants(ctx, id)
+	room.VoiceParticipants = vp
+	room.VoiceCount = len(vp)
+	for _, p := range vp {
+		if p.UserID == viewerID {
+			room.IsInVoice = true
+			break
+		}
+	}
 	return room, nil
 }
 
@@ -131,6 +141,9 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 		// Load a few participants for preview (avatar stack in UI)
 		room.Participants = r.getParticipantsLimit(ctx, room.ID, 5)
 		room.LastMessage, room.LastMessageAt = r.getLastMessage(ctx, room.ID)
+		// Voice count for list preview
+		vids, _ := r.GetVoiceParticipantIDs(ctx, room.ID)
+		room.VoiceCount = len(vids)
 		result = append(result, room)
 	}
 	return result, nil
@@ -458,6 +471,96 @@ func (r *RoomRepository) getParticipantsLimit(ctx context.Context, roomID string
 		ORDER BY rp.joined_at
 		LIMIT $2`,
 		roomID, limit,
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []domain.RoomParticipant
+	for rows.Next() {
+		p := domain.RoomParticipant{}
+		if err := rows.Scan(&p.UserID, &p.FullName, &p.Username, &p.AvatarURL, &p.IsMuted); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ─── Voice sessions ───────────────────────────────────────────────
+
+// JoinVoice inserts a voice session for the user. The user must already be a room member.
+func (r *RoomRepository) JoinVoice(ctx context.Context, roomID, userID string) error {
+	var isMember bool
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM room_participants WHERE room_id=$1 AND user_id=$2)`,
+		roomID, userID,
+	).Scan(&isMember)
+	if err != nil {
+		return fmt.Errorf("join voice check: %w", err)
+	}
+	if !isMember {
+		return domain.ErrNotInRoom
+	}
+	_, err = r.db.Pool.Exec(ctx,
+		`INSERT INTO room_voice_sessions (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+		roomID, userID,
+	)
+	return err
+}
+
+// LeaveVoice removes a voice session for the user.
+func (r *RoomRepository) LeaveVoice(ctx context.Context, roomID, userID string) error {
+	tag, err := r.db.Pool.Exec(ctx,
+		`DELETE FROM room_voice_sessions WHERE room_id=$1 AND user_id=$2`,
+		roomID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotInVoice
+	}
+	return nil
+}
+
+// LeaveVoiceIfPresent removes a voice session silently (no error if not present).
+func (r *RoomRepository) LeaveVoiceIfPresent(ctx context.Context, roomID, userID string) {
+	_, _ = r.db.Pool.Exec(ctx,
+		`DELETE FROM room_voice_sessions WHERE room_id=$1 AND user_id=$2`,
+		roomID, userID,
+	)
+}
+
+// GetVoiceParticipantIDs returns all user_ids currently in the voice channel.
+func (r *RoomRepository) GetVoiceParticipantIDs(ctx context.Context, roomID string) ([]string, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT user_id FROM room_voice_sessions WHERE room_id=$1`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// getVoiceParticipants returns RoomParticipant slice for users in voice channel.
+func (r *RoomRepository) getVoiceParticipants(ctx context.Context, roomID string) []domain.RoomParticipant {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT vs.user_id, u.full_name, u.username, COALESCE(u.avatar_url,''),
+		       COALESCE(rp.is_muted, false)
+		FROM room_voice_sessions vs
+		JOIN users u ON u.id = vs.user_id
+		LEFT JOIN room_participants rp ON rp.room_id = vs.room_id AND rp.user_id = vs.user_id
+		WHERE vs.room_id=$1
+		ORDER BY vs.joined_at`,
+		roomID,
 	)
 	if err != nil {
 		return nil

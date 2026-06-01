@@ -109,12 +109,42 @@ func (s *RoomService) GetMembers(ctx context.Context, roomID, viewerID string) (
 }
 
 func (s *RoomService) Leave(ctx context.Context, roomID, userID string) error {
+	// Remove from voice channel first (silently, user may not be in voice)
+	s.repo.LeaveVoiceIfPresent(ctx, roomID, userID)
 	if err := s.repo.Leave(ctx, roomID, userID); err != nil {
 		return err // preserve sentinel errors (ErrForbidden, ErrRoomNotFound)
 	}
 	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
 	ids = append(ids, userID)
 	s.hub.SendToUsers(ids, "room.left", map[string]any{
+		"room_id": roomID,
+		"user_id": userID,
+	})
+	return nil
+}
+
+// JoinVoice puts the user into the voice channel of the room they are already a member of.
+// Broadcasts room.voice.joined to all room participants.
+func (s *RoomService) JoinVoice(ctx context.Context, roomID, userID string) error {
+	if err := s.repo.JoinVoice(ctx, roomID, userID); err != nil {
+		return err
+	}
+	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	s.hub.SendToUsers(ids, "room.voice.joined", map[string]any{
+		"room_id": roomID,
+		"user_id": userID,
+	})
+	return nil
+}
+
+// LeaveVoice removes the user from the voice channel without removing them from the room.
+// Broadcasts room.voice.left to all room participants.
+func (s *RoomService) LeaveVoice(ctx context.Context, roomID, userID string) error {
+	if err := s.repo.LeaveVoice(ctx, roomID, userID); err != nil {
+		return err
+	}
+	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	s.hub.SendToUsers(ids, "room.voice.left", map[string]any{
 		"room_id": roomID,
 		"user_id": userID,
 	})

@@ -533,6 +533,8 @@ func main() {
 	rooms.Delete("/:id", roomHandler.Close)
 	rooms.Post("/:id/join", roomHandler.Join)
 	rooms.Delete("/:id/join", roomHandler.Leave)
+	rooms.Post("/:id/voice", roomHandler.JoinVoice)
+	rooms.Delete("/:id/voice", roomHandler.LeaveVoice)
 	rooms.Patch("/:id/mute", roomHandler.ToggleMute)
 	rooms.Get("/:id/members", roomHandler.GetMembers)
 	rooms.Post("/:id/invite", roomHandler.InviteMember)

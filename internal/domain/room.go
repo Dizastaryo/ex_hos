@@ -14,14 +14,18 @@ type Room struct {
 	CreatedAt   time.Time `json:"created_at"`
 
 	// Computed on load
-	ParticipantCount int              `json:"participant_count"`
+	ParticipantCount int               `json:"participant_count"`
 	Participants     []RoomParticipant `json:"participants,omitempty"`
-	LastMessage      string           `json:"last_message,omitempty"`
-	LastMessageAt    *time.Time       `json:"last_message_at,omitempty"`
-	IsJoined         bool             `json:"is_joined"`
-	IsMuted          bool             `json:"is_muted"`
-	IsAdmin          bool             `json:"is_admin"`
-	CreatorName      string           `json:"creator_name,omitempty"`
+	LastMessage      string            `json:"last_message,omitempty"`
+	LastMessageAt    *time.Time        `json:"last_message_at,omitempty"`
+	IsJoined         bool              `json:"is_joined"`
+	IsMuted          bool              `json:"is_muted"`
+	IsAdmin          bool              `json:"is_admin"`
+	CreatorName      string            `json:"creator_name,omitempty"`
+	// Voice channel (explicit opt-in, separate from room membership)
+	VoiceCount        int               `json:"voice_count"`
+	VoiceParticipants []RoomParticipant `json:"voice_participants,omitempty"`
+	IsInVoice         bool              `json:"is_in_voice"`
 }
 
 type RoomParticipant struct {
@@ -78,6 +82,7 @@ var ErrRoomNotFound  = newRoomErr("room not found")
 var ErrRoomClosed    = newRoomErr("room is closed")
 var ErrNotInRoom     = newRoomErr("not a member of this room")
 var ErrPrivateRoom   = newRoomErr("room is private — invite only")
+var ErrNotInVoice    = newRoomErr("not in voice channel")
 
 func newRoomErr(s string) error { return roomErrString(s) }
 
