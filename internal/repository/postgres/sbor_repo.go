@@ -75,7 +75,13 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 		       EXISTS(
 		         SELECT 1 FROM sbor_bookmarks sb
 		         WHERE sb.sbor_id = s.id AND sb.user_id = $2
-		       ) AS is_bookmarked
+		       ) AS is_bookmarked,
+		       COALESCE(
+		         (SELECT rq.status FROM sbor_requests rq
+		          WHERE rq.sbor_id = s.id AND rq.user_id = $2), ''
+		       ) AS my_request_status,
+		       (SELECT COUNT(*)::int FROM sbor_requests rq2
+		        WHERE rq2.sbor_id = s.id AND rq2.status = 'pending') AS pending_requests_count
 		FROM sbory s
 		JOIN users u ON u.id = s.host_id
 		LEFT JOIN sbor_members sm ON sm.sbor_id = s.id
@@ -89,6 +95,7 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 		&s.IsLive, &s.IsCancelled, &s.CreatedAt, &s.UpdatedAt,
 		&s.ChatID,
 		&s.HostName, &s.Joined, &s.MyRole, &s.IsJoined, &s.IsBookmarked,
+		&s.MyRequestStatus, &s.PendingRequestsCount,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrSborNotFound
@@ -142,7 +149,13 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 		       EXISTS(
 		         SELECT 1 FROM sbor_bookmarks sb
 		         WHERE sb.sbor_id = s.id AND sb.user_id = $1
-		       ) AS is_bookmarked
+		       ) AS is_bookmarked,
+		       COALESCE(
+		         (SELECT rq.status FROM sbor_requests rq
+		          WHERE rq.sbor_id = s.id AND rq.user_id = $1), ''
+		       ) AS my_request_status,
+		       (SELECT COUNT(*)::int FROM sbor_requests rq2
+		        WHERE rq2.sbor_id = s.id AND rq2.status = 'pending') AS pending_requests_count
 		FROM sbory s
 		JOIN users u ON u.id = s.host_id
 		LEFT JOIN sbor_members sm ON sm.sbor_id = s.id
@@ -165,6 +178,7 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 			&s.CoverUrl, &s.Price, &s.Description, &s.ScheduledAt, &s.FlexibleTime, &s.MaxSlots,
 			&s.IsLive, &s.CreatedAt, &s.ChatID,
 			&s.HostName, &s.Joined, &s.MyRole, &s.IsJoined, &s.IsBookmarked,
+			&s.MyRequestStatus, &s.PendingRequestsCount,
 		); err != nil {
 			return nil, err
 		}
@@ -227,7 +241,10 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 		       EXISTS(
 		         SELECT 1 FROM sbor_bookmarks sb
 		         WHERE sb.sbor_id = s.id AND sb.user_id = $1
-		       ) AS is_bookmarked
+		       ) AS is_bookmarked,
+		       '' AS my_request_status,
+		       (SELECT COUNT(*)::int FROM sbor_requests rq2
+		        WHERE rq2.sbor_id = s.id AND rq2.status = 'pending') AS pending_requests_count
 		FROM sbory s
 		JOIN users u ON u.id = s.host_id
 		JOIN sbor_members my_m ON my_m.sbor_id = s.id AND my_m.user_id = $1
@@ -251,6 +268,7 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 			&s.CoverUrl, &s.Price, &s.Description, &s.ScheduledAt, &s.FlexibleTime, &s.MaxSlots,
 			&s.IsLive, &s.CreatedAt, &s.ChatID,
 			&s.HostName, &s.Joined, &s.MyRole, &s.IsJoined, &s.IsBookmarked,
+			&s.MyRequestStatus, &s.PendingRequestsCount,
 		); err != nil {
 			return nil, err
 		}
@@ -478,6 +496,151 @@ func russianWeekday(d time.Weekday) string {
 func russianMonth(m time.Month) string {
 	return [...]string{"", "янв", "фев", "мар", "апр", "май", "июн",
 		"июл", "авг", "сен", "окт", "ноя", "дек"}[m]
+}
+
+// ─── Request flow ─────────────────────────────────────────────────
+
+// SubmitRequest inserts a new join request.
+// If a rejected request already exists, it resets it to pending (re-apply).
+// Returns ErrAlreadyJoined if user is already a member.
+// Returns ErrAlreadyRequested if a pending request already exists.
+func (r *SborRepository) SubmitRequest(ctx context.Context, sborID, userID, message string) error {
+	// Check already member
+	var isMember bool
+	_ = r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sbor_members WHERE sbor_id=$1 AND user_id=$2)`,
+		sborID, userID).Scan(&isMember)
+	if isMember {
+		return domain.ErrAlreadyJoined
+	}
+
+	tag, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO sbor_requests (sbor_id, user_id, message)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (sbor_id, user_id) DO UPDATE
+		    SET status     = 'pending',
+		        message    = EXCLUDED.message,
+		        updated_at = now()
+		WHERE sbor_requests.status = 'rejected'
+	`, sborID, userID, message)
+	if err != nil {
+		return err
+	}
+	// If 0 rows affected the conflict row already has status='pending'
+	if tag.RowsAffected() == 0 {
+		return domain.ErrAlreadyRequested
+	}
+	return nil
+}
+
+// CancelRequest removes a pending request. User can only cancel their own.
+func (r *SborRepository) CancelRequest(ctx context.Context, sborID, userID string) error {
+	tag, err := r.db.Pool.Exec(ctx,
+		`DELETE FROM sbor_requests WHERE sbor_id=$1 AND user_id=$2 AND status='pending'`,
+		sborID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrRequestNotFound
+	}
+	return nil
+}
+
+// ApproveRequest atomically checks slots, adds user to sbor_members, marks request approved.
+// Returns the approved user's ID so the caller can add them to the group chat.
+func (r *SborRepository) ApproveRequest(ctx context.Context, requestID, adminID string) (approvedUserID string, sborID string, err error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	defer tx.Rollback(ctx)
+
+	var maxSlots *int
+	err = tx.QueryRow(ctx, `
+		SELECT sr.user_id, sr.sbor_id, s.max_slots
+		FROM sbor_requests sr
+		JOIN sbory s ON s.id = sr.sbor_id
+		WHERE sr.id = $1 AND sr.status = 'pending' AND s.host_id = $2
+		FOR UPDATE OF s
+	`, requestID, adminID).Scan(&approvedUserID, &sborID, &maxSlots)
+	if err == pgx.ErrNoRows {
+		return "", "", domain.ErrRequestNotFound
+	}
+	if err != nil {
+		return "", "", err
+	}
+
+	// Slot check
+	if maxSlots != nil {
+		var count int
+		_ = tx.QueryRow(ctx, `SELECT COUNT(*) FROM sbor_members WHERE sbor_id=$1`, sborID).Scan(&count)
+		if count >= *maxSlots {
+			return "", "", domain.ErrSborFull
+		}
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO sbor_members (sbor_id, user_id, role) VALUES ($1, $2, 'participant')
+		ON CONFLICT DO NOTHING
+	`, sborID, approvedUserID)
+	if err != nil {
+		return "", "", err
+	}
+
+	_, err = tx.Exec(ctx,
+		`UPDATE sbor_requests SET status='approved', updated_at=now() WHERE id=$1`,
+		requestID)
+	if err != nil {
+		return "", "", err
+	}
+
+	return approvedUserID, sborID, tx.Commit(ctx)
+}
+
+// RejectRequest marks a pending request as rejected. Returns the user ID.
+func (r *SborRepository) RejectRequest(ctx context.Context, requestID, adminID string) (rejectedUserID string, sborID string, err error) {
+	err = r.db.Pool.QueryRow(ctx, `
+		UPDATE sbor_requests sr
+		SET status = 'rejected', updated_at = now()
+		FROM sbory s
+		WHERE sr.id = $1 AND sr.sbor_id = s.id AND s.host_id = $2 AND sr.status = 'pending'
+		RETURNING sr.user_id, sr.sbor_id
+	`, requestID, adminID).Scan(&rejectedUserID, &sborID)
+	if err == pgx.ErrNoRows {
+		return "", "", domain.ErrRequestNotFound
+	}
+	return rejectedUserID, sborID, err
+}
+
+// ListRequests returns pending join requests for a sbor. adminID must be the host.
+func (r *SborRepository) ListRequests(ctx context.Context, sborID, adminID string) ([]*domain.SborJoinRequest, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT sr.id, sr.sbor_id, sr.user_id, sr.status, sr.message, sr.created_at,
+		       u.full_name, COALESCE(u.username,''), COALESCE(u.avatar_url,'')
+		FROM sbor_requests sr
+		JOIN users u ON u.id = sr.user_id
+		JOIN sbory s ON s.id = sr.sbor_id
+		WHERE sr.sbor_id = $1 AND s.host_id = $2 AND sr.status = 'pending'
+		ORDER BY sr.created_at ASC
+	`, sborID, adminID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*domain.SborJoinRequest
+	for rows.Next() {
+		req := &domain.SborJoinRequest{}
+		if err := rows.Scan(
+			&req.ID, &req.SborID, &req.UserID, &req.Status, &req.Message, &req.CreatedAt,
+			&req.FullName, &req.Username, &req.AvatarURL,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, req)
+	}
+	return result, rows.Err()
 }
 
 // ─── Bookmarks ────────────────────────────────────────────────────

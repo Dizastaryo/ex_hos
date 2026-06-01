@@ -519,6 +519,11 @@ func main() {
 	sbory.Post("/:id/join", sborHandler.Join)
 	sbory.Delete("/:id/join", sborHandler.Leave)
 	sbory.Post("/:id/bookmark", sborHandler.ToggleBookmark)
+	sbory.Post("/:id/requests", sborHandler.SubmitRequest)
+	sbory.Delete("/:id/requests", sborHandler.CancelRequest)
+	sbory.Get("/:id/requests", sborHandler.ListRequests)
+	sbory.Post("/:id/requests/:reqID/approve", sborHandler.ApproveRequest)
+	sbory.Post("/:id/requests/:reqID/reject", sborHandler.RejectRequest)
 
 	// Rooms (Discord-style voice + text rooms)
 	rooms := api.Group("/rooms", middleware.Auth(jwtManager, sessionStore, userRepo))

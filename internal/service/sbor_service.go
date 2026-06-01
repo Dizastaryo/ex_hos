@@ -95,6 +95,78 @@ func (s *SborService) ListMine(ctx context.Context, userID string, page, limit i
 	return items, meta, nil
 }
 
+// ─── Request flow ─────────────────────────────────────────────────
+
+func (s *SborService) SubmitRequest(ctx context.Context, sborID, userID, message string) error {
+	sbor, err := s.repo.GetByID(ctx, sborID, userID)
+	if err != nil {
+		return err
+	}
+	if sbor.HostID == userID {
+		return domain.ErrForbidden // organizer can't request to join own sbor
+	}
+	return s.repo.SubmitRequest(ctx, sborID, userID, message)
+}
+
+func (s *SborService) CancelRequest(ctx context.Context, sborID, userID string) error {
+	return s.repo.CancelRequest(ctx, sborID, userID)
+}
+
+func (s *SborService) ApproveRequest(ctx context.Context, requestID, adminID string) error {
+	approvedUserID, sborID, err := s.repo.ApproveRequest(ctx, requestID, adminID)
+	if err != nil {
+		return err
+	}
+	// Add to group chat
+	sbor, err := s.repo.GetByID(ctx, sborID, adminID)
+	if err != nil {
+		return nil // member added; chat sync failure is non-critical
+	}
+	if sbor.ChatID != nil {
+		if err := s.chatRepo.AddParticipant(ctx, *sbor.ChatID, approvedUserID); err != nil {
+			s.logger.Warn("add approved member to sbor chat",
+				zap.String("sbor_id", sborID), zap.String("user_id", approvedUserID), zap.Error(err))
+		}
+	}
+	// Notify the approved user via WS
+	s.hub.SendToUsers([]string{approvedUserID}, "sbor.request.approved", map[string]any{
+		"sbor_id": sborID,
+		"title":   sbor.Title,
+	})
+	return nil
+}
+
+func (s *SborService) RejectRequest(ctx context.Context, requestID, adminID string) error {
+	rejectedUserID, sborID, err := s.repo.RejectRequest(ctx, requestID, adminID)
+	if err != nil {
+		return err
+	}
+	// Notify the rejected user via WS
+	sbor, _ := s.repo.GetByID(ctx, sborID, adminID)
+	title := ""
+	if sbor != nil {
+		title = sbor.Title
+	}
+	s.hub.SendToUsers([]string{rejectedUserID}, "sbor.request.rejected", map[string]any{
+		"sbor_id": sborID,
+		"title":   title,
+	})
+	return nil
+}
+
+func (s *SborService) ListRequests(ctx context.Context, sborID, adminID string) ([]*domain.SborJoinRequest, error) {
+	sbor, err := s.repo.GetByID(ctx, sborID, adminID)
+	if err != nil {
+		return nil, err
+	}
+	if sbor.HostID != adminID {
+		return nil, domain.ErrForbidden
+	}
+	return s.repo.ListRequests(ctx, sborID, adminID)
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 func (s *SborService) Join(ctx context.Context, sborID, userID string) (*domain.Sbor, error) {
 	sbor, err := s.repo.GetByID(ctx, sborID, userID)
 	if err != nil {
@@ -150,6 +222,8 @@ func (s *SborService) Leave(ctx context.Context, sborID, userID string) error {
 	if err := s.repo.Leave(ctx, sborID, userID); err != nil {
 		return err
 	}
+	// Если была pending заявка — убираем (idempotent, ошибку игнорируем)
+	_ = s.repo.CancelRequest(ctx, sborID, userID)
 	// Удаляем из group-чата
 	if sbor.ChatID != nil {
 		if err := s.chatRepo.RemoveParticipant(ctx, *sbor.ChatID, userID); err != nil {
@@ -167,6 +241,16 @@ func (s *SborService) Update(ctx context.Context, id, userID string, req *domain
 	}
 	if sbor.HostID != userID {
 		return nil, domain.ErrForbidden
+	}
+	// Проверяем что новый max_slots не меньше текущего числа участников
+	if req.MaxSlots != nil {
+		count, err := s.repo.CountMembers(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if *req.MaxSlots < count {
+			return nil, domain.ErrMaxSlotsConflict
+		}
 	}
 	if err := s.repo.Update(ctx, id, userID, req); err != nil {
 		return nil, fmt.Errorf("update sbor: %w", err)

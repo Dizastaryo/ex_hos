@@ -26,17 +26,34 @@ type Sbor struct {
 	ChatID *string `json:"chat_id" db:"chat_id"`
 
 	// Joined/computed
-	HostName        string     `json:"host_name"`
-	Joined          int        `json:"joined"`
-	MemberNames     []string   `json:"member_names"`
-	MemberUsernames []string   `json:"member_usernames"`
-	MemberIDs       []string   `json:"member_ids"`
-	MyRole          string     `json:"my_role"`   // "" | "participant" | "organizer"
-	IsJoined        bool       `json:"is_joined"`
-	IsBookmarked    bool       `json:"is_bookmarked"`
-	When            string     `json:"when"`
-	WhenSub         string     `json:"when_sub,omitempty"`
-	Distance        string     `json:"distance,omitempty"`
+	HostName        string   `json:"host_name"`
+	Joined          int      `json:"joined"`
+	MemberNames     []string `json:"member_names"`
+	MemberUsernames []string `json:"member_usernames"`
+	MemberIDs       []string `json:"member_ids"`
+	MyRole          string   `json:"my_role"`   // "" | "participant" | "organizer"
+	IsJoined        bool     `json:"is_joined"`
+	IsBookmarked    bool     `json:"is_bookmarked"`
+	When            string   `json:"when"`
+	WhenSub         string   `json:"when_sub,omitempty"`
+	Distance        string   `json:"distance,omitempty"`
+
+	// Request flow fields
+	MyRequestStatus      string `json:"my_request_status"`       // "" | "pending" | "approved" | "rejected"
+	PendingRequestsCount int    `json:"pending_requests_count"`  // только для organizer'а
+}
+
+// SborJoinRequest — заявка участника на вступление в сбор.
+type SborJoinRequest struct {
+	ID        string    `json:"id"`
+	SborID    string    `json:"sbor_id"`
+	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
+	FullName  string    `json:"full_name"`
+	AvatarURL string    `json:"avatar_url"`
+	Status    string    `json:"status"` // pending | approved | rejected
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type CreateSborRequest struct {
@@ -65,10 +82,13 @@ type UpdateSborRequest struct {
 	MaxSlots     *int       `json:"max_slots"     validate:"omitempty,min=2,max=1000"`
 }
 
-var ErrSborNotFound   = newErr("sbor not found")
-var ErrSborFull       = newErr("sbor is full")
-var ErrAlreadyJoined  = newErr("already joined")
-var ErrNotJoined      = newErr("not a member of this sbor")
+var ErrSborNotFound      = newErr("sbor not found")
+var ErrSborFull          = newErr("sbor is full")
+var ErrAlreadyJoined     = newErr("already joined")
+var ErrNotJoined         = newErr("not a member of this sbor")
+var ErrRequestNotFound   = newErr("request not found")
+var ErrAlreadyRequested  = newErr("request already pending")
+var ErrMaxSlotsConflict  = newErr("max slots cannot be less than current member count")
 
 func newErr(s string) error { return errString(s) }
 

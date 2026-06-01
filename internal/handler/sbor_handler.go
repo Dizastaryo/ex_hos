@@ -85,6 +85,105 @@ func (h *SborHandler) GetByID(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, sbor, nil)
 }
 
+// POST /api/v1/sbory/:id/requests  — подать заявку на вступление
+func (h *SborHandler) SubmitRequest(c *fiber.Ctx) error {
+	sborID := c.Params("id")
+	userID := middleware.GetUserID(c)
+
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = c.BodyParser(&body)
+
+	if err := h.svc.SubmitRequest(c.Context(), sborID, userID, body.Message); err != nil {
+		switch err {
+		case domain.ErrSborNotFound:
+			return respondError(c, fiber.StatusNotFound, "sbor not found")
+		case domain.ErrAlreadyJoined:
+			return respondError(c, fiber.StatusConflict, "already a member")
+		case domain.ErrAlreadyRequested:
+			return respondError(c, fiber.StatusConflict, "request already pending")
+		case domain.ErrForbidden:
+			return respondError(c, fiber.StatusForbidden, "organizer cannot request to join")
+		}
+		h.logger.Error("submit sbor request", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to submit request")
+	}
+	return respondSuccess(c, fiber.StatusCreated, fiber.Map{"message": "request submitted"}, nil)
+}
+
+// DELETE /api/v1/sbory/:id/requests  — отозвать свою заявку
+func (h *SborHandler) CancelRequest(c *fiber.Ctx) error {
+	sborID := c.Params("id")
+	userID := middleware.GetUserID(c)
+
+	if err := h.svc.CancelRequest(c.Context(), sborID, userID); err != nil {
+		if err == domain.ErrRequestNotFound {
+			return respondError(c, fiber.StatusNotFound, "no pending request found")
+		}
+		h.logger.Error("cancel sbor request", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to cancel request")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "request cancelled"}, nil)
+}
+
+// GET /api/v1/sbory/:id/requests  — список заявок (только для организатора)
+func (h *SborHandler) ListRequests(c *fiber.Ctx) error {
+	sborID := c.Params("id")
+	adminID := middleware.GetUserID(c)
+
+	requests, err := h.svc.ListRequests(c.Context(), sborID, adminID)
+	if err != nil {
+		switch err {
+		case domain.ErrSborNotFound:
+			return respondError(c, fiber.StatusNotFound, "sbor not found")
+		case domain.ErrForbidden:
+			return respondError(c, fiber.StatusForbidden, "only host can view requests")
+		}
+		h.logger.Error("list sbor requests", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to list requests")
+	}
+	return respondSuccess(c, fiber.StatusOK, requests, nil)
+}
+
+// POST /api/v1/sbory/:id/requests/:reqID/approve
+func (h *SborHandler) ApproveRequest(c *fiber.Ctx) error {
+	reqID := c.Params("reqID")
+	adminID := middleware.GetUserID(c)
+
+	if err := h.svc.ApproveRequest(c.Context(), reqID, adminID); err != nil {
+		switch err {
+		case domain.ErrRequestNotFound:
+			return respondError(c, fiber.StatusNotFound, "request not found")
+		case domain.ErrSborFull:
+			return respondError(c, fiber.StatusConflict, "sbor is full")
+		case domain.ErrForbidden:
+			return respondError(c, fiber.StatusForbidden, "only host can approve")
+		}
+		h.logger.Error("approve sbor request", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to approve request")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "request approved"}, nil)
+}
+
+// POST /api/v1/sbory/:id/requests/:reqID/reject
+func (h *SborHandler) RejectRequest(c *fiber.Ctx) error {
+	reqID := c.Params("reqID")
+	adminID := middleware.GetUserID(c)
+
+	if err := h.svc.RejectRequest(c.Context(), reqID, adminID); err != nil {
+		switch err {
+		case domain.ErrRequestNotFound:
+			return respondError(c, fiber.StatusNotFound, "request not found")
+		case domain.ErrForbidden:
+			return respondError(c, fiber.StatusForbidden, "only host can reject")
+		}
+		h.logger.Error("reject sbor request", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to reject request")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "request rejected"}, nil)
+}
+
 // POST /api/v1/sbory/:id/join
 func (h *SborHandler) Join(c *fiber.Ctx) error {
 	id := c.Params("id")
@@ -144,6 +243,8 @@ func (h *SborHandler) Update(c *fiber.Ctx) error {
 			return respondError(c, fiber.StatusNotFound, "sbor not found")
 		case domain.ErrForbidden:
 			return respondError(c, fiber.StatusForbidden, "only host can update")
+		case domain.ErrMaxSlotsConflict:
+			return respondError(c, fiber.StatusConflict, "max slots cannot be less than current member count")
 		}
 		h.logger.Error("update sbor", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to update sbor")
