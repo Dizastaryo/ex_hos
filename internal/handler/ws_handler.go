@@ -90,8 +90,10 @@ func (h *WSHandler) Handle(c *fiberws.Conn) {
 func (h *WSHandler) readPump(client *ws.Client, conn *fiberws.Conn) {
 	defer conn.Close()
 
-	// 1024 fits ~10x typing payload — keep tight to avoid abuse.
-	conn.SetReadLimit(1024)
+	// 128 KB — достаточно для SDP offer/answer (~2-5 KB) и ICE-кандидатов.
+	// Раньше было 1024 → call.offer с SDP всегда превышало лимит → backend
+	// закрывал WS с кодом 1009 "message too big" → звонки не работали.
+	conn.SetReadLimit(128 * 1024)
 	// BUG-24: read-deadline 95 секунд. writePump шлёт ping каждые 30 сек,
 	// pong reset'ит deadline. 95s = 3 ping-cycles + buffer → выдерживаем 2
 	// потерянных pong'а подряд прежде чем close (flaky-сети, mobile-roaming).
