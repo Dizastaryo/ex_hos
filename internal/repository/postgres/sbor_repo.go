@@ -104,7 +104,7 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 		return nil, fmt.Errorf("get sbor: %w", err)
 	}
 
-	s.MemberNames, s.MemberUsernames, s.MemberIDs, _ = r.getMemberUsers(ctx, id)
+	s.MemberNames, s.MemberUsernames, s.MemberIDs, s.MemberAvatarURLs, _ = r.getMemberUsers(ctx, id)
 	s.When, s.WhenSub = formatWhen(s.ScheduledAt, s.FlexibleTime)
 	return s, nil
 }
@@ -195,7 +195,7 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 			idx[s.ID] = i
 		}
 		memberRows, err := r.db.Pool.Query(ctx, `
-			SELECT sm.sbor_id, u.full_name, COALESCE(u.username, ''), u.id
+			SELECT sm.sbor_id, u.full_name, COALESCE(u.username, ''), u.id, COALESCE(u.avatar_url, '')
 			FROM sbor_members sm
 			JOIN users u ON u.id = sm.user_id
 			WHERE sm.sbor_id = ANY($1)
@@ -205,8 +205,8 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 			defer memberRows.Close()
 			counters := make(map[string]int, len(result))
 			for memberRows.Next() {
-				var sborID, name, username, userID string
-				if err := memberRows.Scan(&sborID, &name, &username, &userID); err != nil {
+				var sborID, name, username, userID, avatarURL string
+				if err := memberRows.Scan(&sborID, &name, &username, &userID, &avatarURL); err != nil {
 					continue
 				}
 				if counters[sborID] >= 8 {
@@ -217,6 +217,7 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 				result[i].MemberNames = append(result[i].MemberNames, name)
 				result[i].MemberUsernames = append(result[i].MemberUsernames, username)
 				result[i].MemberIDs = append(result[i].MemberIDs, userID)
+				result[i].MemberAvatarURLs = append(result[i].MemberAvatarURLs, avatarURL)
 			}
 		}
 	}
@@ -284,7 +285,7 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 			idx[s.ID] = i
 		}
 		memberRows, err := r.db.Pool.Query(ctx, `
-			SELECT sm.sbor_id, u.full_name, COALESCE(u.username, ''), u.id
+			SELECT sm.sbor_id, u.full_name, COALESCE(u.username, ''), u.id, COALESCE(u.avatar_url, '')
 			FROM sbor_members sm
 			JOIN users u ON u.id = sm.user_id
 			WHERE sm.sbor_id = ANY($1)
@@ -294,8 +295,8 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 			defer memberRows.Close()
 			counters := make(map[string]int, len(result))
 			for memberRows.Next() {
-				var sborID, name, username, userID string
-				if err := memberRows.Scan(&sborID, &name, &username, &userID); err != nil {
+				var sborID, name, username, userID, avatarURL string
+				if err := memberRows.Scan(&sborID, &name, &username, &userID, &avatarURL); err != nil {
 					continue
 				}
 				if counters[sborID] >= 8 {
@@ -306,6 +307,7 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 				result[i].MemberNames = append(result[i].MemberNames, name)
 				result[i].MemberUsernames = append(result[i].MemberUsernames, username)
 				result[i].MemberIDs = append(result[i].MemberIDs, userID)
+				result[i].MemberAvatarURLs = append(result[i].MemberAvatarURLs, avatarURL)
 			}
 		}
 	}
@@ -417,29 +419,30 @@ func (r *SborRepository) CountMembers(ctx context.Context, sborID string) (int, 
 	return n, err
 }
 
-func (r *SborRepository) getMemberUsers(ctx context.Context, sborID string) (names, usernames, ids []string, err error) {
+func (r *SborRepository) getMemberUsers(ctx context.Context, sborID string) (names, usernames, ids, avatarURLs []string, err error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT u.full_name, COALESCE(u.username, ''), u.id
+		SELECT u.full_name, COALESCE(u.username, ''), u.id, COALESCE(u.avatar_url, '')
 		FROM sbor_members sm
 		JOIN users u ON u.id = sm.user_id
 		WHERE sm.sbor_id = $1
 		ORDER BY sm.joined_at
 		LIMIT 8`, sborID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var name, username, id string
-		if err := rows.Scan(&name, &username, &id); err != nil {
-			return nil, nil, nil, err
+		var name, username, id, avatarURL string
+		if err := rows.Scan(&name, &username, &id, &avatarURL); err != nil {
+			return nil, nil, nil, nil, err
 		}
 		names = append(names, name)
 		usernames = append(usernames, username)
 		ids = append(ids, id)
+		avatarURLs = append(avatarURLs, avatarURL)
 	}
-	return names, usernames, ids, nil
+	return names, usernames, ids, avatarURLs, nil
 }
 
 // ─── formatWhen ───────────────────────────────────────────────────

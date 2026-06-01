@@ -28,9 +28,10 @@ type Sbor struct {
 	// Joined/computed
 	HostName        string   `json:"host_name"`
 	Joined          int      `json:"joined"`
-	MemberNames     []string `json:"member_names"`
-	MemberUsernames []string `json:"member_usernames"`
-	MemberIDs       []string `json:"member_ids"`
+	MemberNames      []string `json:"member_names"`
+	MemberUsernames  []string `json:"member_usernames"`
+	MemberIDs        []string `json:"member_ids"`
+	MemberAvatarURLs []string `json:"member_avatar_urls"`
 	MyRole          string   `json:"my_role"`   // "" | "participant" | "organizer"
 	IsJoined        bool     `json:"is_joined"`
 	IsBookmarked    bool     `json:"is_bookmarked"`
