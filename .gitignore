@@ -1,3 +1,6 @@
+# Claude AI instructions (local only, never push)
+CLAUDE.md
+
 # Binaries
 *.exe
 *.exe~
