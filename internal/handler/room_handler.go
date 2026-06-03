@@ -314,12 +314,24 @@ func (h *RoomHandler) SendMessage(c *fiber.Ctx) error {
 	id := c.Params("id")
 	userID := middleware.GetUserID(c)
 	var req struct {
-		Text string `json:"text"`
+		Text             string `json:"text"`
+		Kind             string `json:"kind"`
+		AttachedMediaURL string `json:"attached_media_url"`
 	}
-	if err := c.BodyParser(&req); err != nil || req.Text == "" {
-		return respondError(c, fiber.StatusBadRequest, "text is required")
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
 	}
-	msg, err := h.svc.SendMessage(c.Context(), id, userID, req.Text)
+	if req.Text == "" && req.AttachedMediaURL == "" {
+		return respondError(c, fiber.StatusBadRequest, "text or attached_media_url is required")
+	}
+	if req.Kind == "" {
+		if req.AttachedMediaURL != "" {
+			req.Kind = "sticker"
+		} else {
+			req.Kind = "text"
+		}
+	}
+	msg, err := h.svc.SendMessage(c.Context(), id, userID, req.Text, req.Kind, req.AttachedMediaURL)
 	if err != nil {
 		switch err {
 		case domain.ErrRoomNotFound:

@@ -36,14 +36,16 @@ type RoomParticipant struct {
 }
 
 type RoomMessage struct {
-	ID             string    `json:"id"`
-	RoomID         string    `json:"room_id"`
-	SenderID       string    `json:"sender_id"`
-	SenderName     string    `json:"sender_name"`
-	SenderUsername string    `json:"sender_username"`
-	SenderAvatar   string    `json:"sender_avatar_url,omitempty"`
-	Text           string    `json:"text"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	RoomID           string    `json:"room_id"`
+	SenderID         string    `json:"sender_id"`
+	SenderName       string    `json:"sender_name"`
+	SenderUsername   string    `json:"sender_username"`
+	SenderAvatar     string    `json:"sender_avatar_url,omitempty"`
+	Text             string    `json:"text"`
+	Kind             string    `json:"kind"`
+	AttachedMediaURL string    `json:"attached_media_url,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type CreateRoomRequest struct {

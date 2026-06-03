@@ -271,6 +271,8 @@ func main() {
 	roomRepo := postgres.NewRoomRepository(db)
 	roomService := service.NewRoomService(roomRepo, wsHub, logger)
 	roomHandler := handler.NewRoomHandler(roomService, validate, logger)
+	stickerRepo := postgres.NewStickerRepository(db)
+	stickerHandler := handler.NewStickerHandler(stickerRepo, r2Client, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -545,6 +547,13 @@ func main() {
 	rooms.Get("/:id/messages", roomHandler.GetMessages)
 	rooms.Post("/:id/messages", roomHandler.SendMessage)
 
+	// Stickers
+	stickersGroup := api.Group("/stickers", middleware.Auth(jwtManager, sessionStore, userRepo))
+	stickersGroup.Post("/remove-bg", stickerHandler.RemoveBg)
+	stickersGroup.Get("/", stickerHandler.List)
+	stickersGroup.Post("/", stickerHandler.Create)
+	stickersGroup.Delete("/:id", stickerHandler.Delete)
+
 	// Notifications
 	api.Get("/notifications", middleware.Auth(jwtManager, sessionStore, userRepo), notifHandler.GetNotifications)
 	api.Put("/notifications/read", middleware.Auth(jwtManager, sessionStore, userRepo), notifHandler.MarkAllRead)
@@ -556,6 +565,7 @@ func main() {
 	chats.Post("/", chatHandler.CreateChat)
 	chats.Get("/:id/messages", chatHandler.GetMessages)
 	chats.Post("/:id/messages", chatHandler.SendMessage)
+	chats.Patch("/:id/messages/:message_id", chatHandler.EditMessage)
 	chats.Put("/:id/read", chatHandler.MarkRead)
 	// Group-chat management
 	chats.Put("/:id", chatHandler.UpdateGroup)
@@ -566,6 +576,8 @@ func main() {
 	chats.Put("/:id/members/:user_id/role", chatHandler.ChangeMemberRole)
 	chats.Put("/:id/pin", chatHandler.PinMessage)
 	chats.Put("/:id/user-pin", chatHandler.TogglePinConversation)
+	chats.Patch("/:id/archive", chatHandler.ArchiveChat)
+	chats.Patch("/:id/mute", chatHandler.MuteChat)
 	chats.Delete("/:id", chatHandler.HideConversation)
 
 	// Reactions on chat messages — separate group because the URL is

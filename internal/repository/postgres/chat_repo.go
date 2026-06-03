@@ -40,6 +40,12 @@ type ChatConversation struct {
 	// IsPinned — закреплён ли чат у текущего пользователя (хранится в
 	// conversation_participants.pinned_at).
 	IsPinned bool `json:"is_pinned"`
+
+	// IsArchived — помещён ли чат в архив текущим пользователем.
+	IsArchived bool `json:"archived"`
+
+	// IsMuted — отключены ли уведомления для этого чата.
+	IsMuted bool `json:"muted"`
 }
 
 // GroupParticipant — участник group-чата с ролью.
@@ -231,7 +237,9 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 			  (SELECT sm.role = 'organizer' FROM sbor_members sm WHERE sm.sbor_id = sb.id AND sm.user_id = $1 LIMIT 1),
 			  false
 			) AS is_organizer,
-			cp1.pinned_at IS NOT NULL AS is_pinned
+			cp1.pinned_at IS NOT NULL AS is_pinned,
+			cp1.archived_at IS NOT NULL AS is_archived,
+			COALESCE(cp1.muted, false) AS is_muted
 		FROM conversations c
 		JOIN conversation_participants cp1 ON cp1.conversation_id = c.id AND cp1.user_id = $1 AND cp1.hidden_at IS NULL
 		LEFT JOIN LATERAL (
@@ -289,6 +297,8 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 			&conv.SborID,
 			&conv.IsOrganizer,
 			&conv.IsPinned,
+			&conv.IsArchived,
+			&conv.IsMuted,
 		); err != nil {
 			return nil, fmt.Errorf("scan conversation: %w", err)
 		}
@@ -963,7 +973,15 @@ func (r *ChatRepository) GetMessageSender(ctx context.Context, messageID string)
 // удаляет истёкшие (expires_at) сообщения физически.
 func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID string) error {
 	tag, err := r.db.Pool.Exec(ctx,
-		`UPDATE messages SET is_deleted_for_all = TRUE WHERE id = $1`, messageID)
+		`UPDATE messages
+		 SET is_deleted_for_all = TRUE,
+		     kind = 'deleted',
+		     text = '',
+		     attached_post_id = NULL,
+		     attached_media_url = '',
+		     attached_media_type = '',
+		     reply_to_message_id = NULL
+		 WHERE id = $1`, messageID)
 	if err != nil {
 		return fmt.Errorf("delete message: %w", err)
 	}
@@ -971,6 +989,56 @@ func (r *ChatRepository) DeleteMessage(ctx context.Context, messageID string) er
 		return domain.ErrNotFound
 	}
 	return nil
+}
+
+// EditMessage updates text for an existing message and returns the updated row.
+// Authorization is enforced by sender_id + conversation_id in the WHERE clause.
+func (r *ChatRepository) EditMessage(ctx context.Context, conversationID, messageID, senderID, text string) (ChatMessage, error) {
+	var msg ChatMessage
+	var duration *int
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE messages
+		SET text = $4
+		WHERE id = $1
+		  AND conversation_id = $2
+		  AND sender_id = $3
+		  AND kind = 'text'
+		  AND is_deleted_for_all = FALSE
+		RETURNING id, conversation_id, sender_id, text, is_read,
+		          (delivered_at IS NOT NULL) AS is_delivered,
+		          created_at, expires_at, kind,
+		          attached_post_id, attached_media_url, attached_media_type,
+		          media_duration_seconds, waveform, reply_to_message_id`,
+		messageID, conversationID, senderID, text,
+	).Scan(
+		&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Text,
+		&msg.IsRead, &msg.IsDelivered, &msg.CreatedAt, &msg.ExpiresAt,
+		&msg.Kind, &msg.AttachedPostID, &msg.AttachedMediaURL,
+		&msg.AttachedMediaType, &duration, &msg.Waveform,
+		&msg.ReplyToMessageID,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ChatMessage{}, domain.ErrNotFound
+		}
+		return ChatMessage{}, fmt.Errorf("edit message: %w", err)
+	}
+	if duration != nil {
+		msg.MediaDurationSeconds = *duration
+	}
+	msg.IsMe = true
+	counts, err := r.getMessageCounts(ctx, msg.ID)
+	if err == nil {
+		msg.DeliveredCount = counts.DeliveredCount
+		msg.ReadCount = counts.ReadCount
+		msg.RecipientsCount = counts.RecipientsCount
+		msg.IsDelivered = counts.DeliveredCount > 0
+		msg.IsRead = counts.ReadCount > 0
+	}
+	if msg.ReplyToMessageID != nil {
+		msg.ReplyTo, _ = r.fetchReplyPreview(ctx, *msg.ReplyToMessageID)
+	}
+	return msg, nil
 }
 
 // HideMessageForUser скрывает сообщение только для конкретного пользователя
@@ -1389,6 +1457,35 @@ func (r *ChatRepository) TogglePinConversation(ctx context.Context, conversation
 	return newPinned, err
 }
 
+// SetConversationArchived архивирует или разархивирует чат для пользователя.
+func (r *ChatRepository) SetConversationArchived(ctx context.Context, conversationID, userID string, archived bool) error {
+	var err error
+	if archived {
+		_, err = r.db.Pool.Exec(ctx, `
+			UPDATE conversation_participants SET archived_at = NOW()
+			WHERE conversation_id = $1 AND user_id = $2`,
+			conversationID, userID,
+		)
+	} else {
+		_, err = r.db.Pool.Exec(ctx, `
+			UPDATE conversation_participants SET archived_at = NULL
+			WHERE conversation_id = $1 AND user_id = $2`,
+			conversationID, userID,
+		)
+	}
+	return err
+}
+
+// SetConversationMuted включает или отключает уведомления для чата у пользователя.
+func (r *ChatRepository) SetConversationMuted(ctx context.Context, conversationID, userID string, muted bool) error {
+	_, err := r.db.Pool.Exec(ctx, `
+		UPDATE conversation_participants SET muted = $3
+		WHERE conversation_id = $1 AND user_id = $2`,
+		conversationID, userID, muted,
+	)
+	return err
+}
+
 // HideConversationForUser скрывает чат из списка текущего пользователя
 // (delete for self). Устанавливает hidden_at = NOW() в его participant-строке.
 // Чат и сообщения не удаляются — другой участник видит их без изменений.
@@ -1407,4 +1504,3 @@ func (r *ChatRepository) HideConversationForUser(ctx context.Context, conversati
 	}
 	return nil
 }
-

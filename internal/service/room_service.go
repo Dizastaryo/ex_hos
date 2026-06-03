@@ -218,7 +218,7 @@ func (s *RoomService) Close(ctx context.Context, roomID, userID string) error {
 	return nil
 }
 
-func (s *RoomService) SendMessage(ctx context.Context, roomID, senderID, text string) (*domain.RoomMessage, error) {
+func (s *RoomService) SendMessage(ctx context.Context, roomID, senderID, text, kind, attachedMediaURL string) (*domain.RoomMessage, error) {
 	room, err := s.repo.GetByID(ctx, roomID, senderID)
 	if err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ func (s *RoomService) SendMessage(ctx context.Context, roomID, senderID, text st
 	if !room.IsJoined {
 		return nil, domain.ErrForbidden
 	}
-	msg, err := s.repo.SendMessage(ctx, roomID, senderID, text)
+	msg, err := s.repo.SendMessage(ctx, roomID, senderID, text, kind, attachedMediaURL)
 	if err != nil {
 		return nil, err
 	}

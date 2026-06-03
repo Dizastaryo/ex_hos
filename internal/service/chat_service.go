@@ -163,6 +163,34 @@ func (s *ChatService) SendMessage(ctx context.Context, conversationID, senderID 
 	return msg, nil
 }
 
+// EditMessage updates a sender-owned text message and returns the updated row.
+func (s *ChatService) EditMessage(
+	ctx context.Context,
+	conversationID, messageID, callerID, text string,
+) (postgres.ChatMessage, error) {
+	ok, err := s.chatRepo.IsParticipant(ctx, conversationID, callerID)
+	if err != nil {
+		return postgres.ChatMessage{}, err
+	}
+	if !ok {
+		return postgres.ChatMessage{}, domain.ErrForbidden
+	}
+
+	senderID, actualConversationID, err := s.chatRepo.GetMessageSender(ctx, messageID)
+	if err != nil {
+		return postgres.ChatMessage{}, err
+	}
+	if actualConversationID != conversationID || senderID != callerID {
+		return postgres.ChatMessage{}, domain.ErrForbidden
+	}
+
+	msg, err := s.chatRepo.EditMessage(ctx, conversationID, messageID, callerID, text)
+	if err != nil {
+		return postgres.ChatMessage{}, err
+	}
+	return msg, nil
+}
+
 // SetReaction upserts the caller's emoji on a message. Returns the updated
 // per-emoji count map so the handler can pass it to the WS push without a
 // second roundtrip.
@@ -514,7 +542,7 @@ func (s *ChatService) PinMessage(
 }
 
 // DeleteMessage помечает сообщение как удалённое для всех (WhatsApp-стиль).
-// Permission: только автор + сообщение не старше 1 часа.
+// Permission: только автор + сообщение не старше 24 часов.
 // Fan-out WS-event chat.message.deleted — все participants обновляют
 // локальный state (показывают «Сообщение удалено»).
 func (s *ChatService) DeleteMessage(
@@ -528,12 +556,12 @@ func (s *ChatService) DeleteMessage(
 	if senderID != callerID {
 		return domain.ErrForbidden
 	}
-	// Проверяем возраст: «удалить для всех» доступно только в первый час.
+	// Проверяем возраст: «удалить для всех» доступно только в первые 24 часа.
 	createdAt, err := s.chatRepo.GetMessageCreatedAt(ctx, messageID)
 	if err != nil {
 		return err
 	}
-	if time.Since(createdAt) > time.Hour {
+	if time.Since(createdAt) > 24*time.Hour {
 		return domain.ErrForbidden
 	}
 	if err := s.chatRepo.DeleteMessage(ctx, messageID); err != nil {
@@ -550,6 +578,20 @@ func (s *ChatService) DeleteMessage(
 	return nil
 }
 
+func (s *ChatService) DeleteMessageInConversation(
+	ctx context.Context,
+	conversationID, messageID, callerID string,
+) error {
+	belongs, err := s.chatRepo.MessageBelongsToConversation(ctx, messageID, conversationID)
+	if err != nil {
+		return err
+	}
+	if !belongs {
+		return domain.ErrNotFound
+	}
+	return s.DeleteMessage(ctx, messageID, callerID)
+}
+
 // TogglePinConversation закрепляет/открепляет чат у callerID.
 // Возвращает новое состояние isPinned.
 func (s *ChatService) TogglePinConversation(ctx context.Context, conversationID, callerID string) (bool, error) {
@@ -561,6 +603,30 @@ func (s *ChatService) TogglePinConversation(ctx context.Context, conversationID,
 		return false, domain.ErrForbidden
 	}
 	return s.chatRepo.TogglePinConversation(ctx, conversationID, callerID)
+}
+
+// ArchiveConversation архивирует или разархивирует чат у callerID.
+func (s *ChatService) ArchiveConversation(ctx context.Context, conversationID, callerID string, archived bool) error {
+	ok, err := s.chatRepo.IsParticipant(ctx, conversationID, callerID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrForbidden
+	}
+	return s.chatRepo.SetConversationArchived(ctx, conversationID, callerID, archived)
+}
+
+// MuteConversation включает или отключает уведомления для чата у callerID.
+func (s *ChatService) MuteConversation(ctx context.Context, conversationID, callerID string, muted bool) error {
+	ok, err := s.chatRepo.IsParticipant(ctx, conversationID, callerID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrForbidden
+	}
+	return s.chatRepo.SetConversationMuted(ctx, conversationID, callerID, muted)
 }
 
 // HideConversation скрывает чат из списка callerID (delete for self).

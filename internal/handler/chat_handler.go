@@ -403,6 +403,61 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusCreated, msg, nil)
 }
 
+// EditMessage godoc
+// PATCH /api/v1/chats/:id/messages/:message_id
+// Body: {"text": "new text"}
+func (h *ChatHandler) EditMessage(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	chatID := c.Params("id")
+	messageID := c.Params("message_id")
+
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return respondError(c, fiber.StatusBadRequest, "text is required")
+	}
+
+	msg, err := h.chatService.EditMessage(c.Context(), chatID, messageID, userID, text)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return respondError(c, fiber.StatusNotFound, "message not found")
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			return respondError(c, fiber.StatusForbidden, "only sender can edit this message")
+		}
+		h.logger.Error("edit message", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to edit message")
+	}
+
+	return respondSuccess(c, fiber.StatusOK, msg, nil)
+}
+
+// DeleteChatMessage godoc
+// DELETE /api/v1/chats/:id/messages/:message_id
+func (h *ChatHandler) DeleteChatMessage(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	chatID := c.Params("id")
+	messageID := c.Params("message_id")
+
+	if err := h.chatService.DeleteMessage(c.Context(), messageID, userID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return respondError(c, fiber.StatusNotFound, "message not found")
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			return respondError(c, fiber.StatusForbidden,
+				"только автор может удалить сообщение в первые 24 часа")
+		}
+		h.logger.Error("delete chat message", zap.String("chat_id", chatID), zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
+}
+
 // React godoc
 // POST /api/v1/chat-messages/:id/react   body: {"emoji": "👍"}
 func (h *ChatHandler) React(c *fiber.Ctx) error {
@@ -499,6 +554,50 @@ func (h *ChatHandler) HideConversation(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to hide chat")
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "chat hidden"}, nil)
+}
+
+// ArchiveChat godoc
+// PATCH /api/v1/chats/:id/archive
+func (h *ChatHandler) ArchiveChat(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	chatID := c.Params("id")
+
+	var req struct {
+		Archived bool `json:"archived"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if err := h.chatService.ArchiveConversation(c.Context(), chatID, userID, req.Archived); err != nil {
+		if errors.Is(err, domain.ErrForbidden) {
+			return respondError(c, fiber.StatusForbidden, "not a participant")
+		}
+		h.logger.Error("archive conversation", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to archive chat")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"archived": req.Archived}, nil)
+}
+
+// MuteChat godoc
+// PATCH /api/v1/chats/:id/mute
+func (h *ChatHandler) MuteChat(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	chatID := c.Params("id")
+
+	var req struct {
+		Muted bool `json:"muted"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if err := h.chatService.MuteConversation(c.Context(), chatID, userID, req.Muted); err != nil {
+		if errors.Is(err, domain.ErrForbidden) {
+			return respondError(c, fiber.StatusForbidden, "not a participant")
+		}
+		h.logger.Error("mute conversation", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to mute chat")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"muted": req.Muted}, nil)
 }
 
 // MarkRead godoc

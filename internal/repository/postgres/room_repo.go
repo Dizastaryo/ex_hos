@@ -375,14 +375,17 @@ func (r *RoomRepository) Close(ctx context.Context, roomID string) error {
 
 // ─── Messages ─────────────────────────────────────────────────────
 
-func (r *RoomRepository) SendMessage(ctx context.Context, roomID, senderID, text string) (*domain.RoomMessage, error) {
+func (r *RoomRepository) SendMessage(ctx context.Context, roomID, senderID, text, kind, attachedMediaURL string) (*domain.RoomMessage, error) {
+	if kind == "" {
+		kind = "text"
+	}
 	msg := &domain.RoomMessage{}
 	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO room_messages (room_id, sender_id, text)
-		VALUES ($1,$2,$3)
-		RETURNING id, room_id, sender_id, text, created_at`,
-		roomID, senderID, text,
-	).Scan(&msg.ID, &msg.RoomID, &msg.SenderID, &msg.Text, &msg.CreatedAt)
+		INSERT INTO room_messages (room_id, sender_id, text, kind, attached_media_url)
+		VALUES ($1,$2,$3,$4,$5)
+		RETURNING id, room_id, sender_id, text, kind, attached_media_url, created_at`,
+		roomID, senderID, text, kind, attachedMediaURL,
+	).Scan(&msg.ID, &msg.RoomID, &msg.SenderID, &msg.Text, &msg.Kind, &msg.AttachedMediaURL, &msg.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("send room message: %w", err)
 	}
@@ -396,7 +399,9 @@ func (r *RoomRepository) SendMessage(ctx context.Context, roomID, senderID, text
 
 func (r *RoomRepository) GetMessages(ctx context.Context, roomID string, limit, offset int) ([]*domain.RoomMessage, error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT m.id, m.room_id, m.sender_id, m.text, m.created_at,
+		SELECT m.id, m.room_id, m.sender_id, m.text,
+		       COALESCE(m.kind,'text'), COALESCE(m.attached_media_url,''),
+		       m.created_at,
 		       u.full_name, u.username, COALESCE(u.avatar_url,'')
 		FROM room_messages m
 		JOIN users u ON u.id = m.sender_id
@@ -414,7 +419,8 @@ func (r *RoomRepository) GetMessages(ctx context.Context, roomID string, limit, 
 	for rows.Next() {
 		msg := &domain.RoomMessage{}
 		if err := rows.Scan(
-			&msg.ID, &msg.RoomID, &msg.SenderID, &msg.Text, &msg.CreatedAt,
+			&msg.ID, &msg.RoomID, &msg.SenderID, &msg.Text,
+			&msg.Kind, &msg.AttachedMediaURL, &msg.CreatedAt,
 			&msg.SenderName, &msg.SenderUsername, &msg.SenderAvatar,
 		); err != nil {
 			return nil, err
