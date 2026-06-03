@@ -172,9 +172,16 @@ func (s *MediaService) Upload(ctx context.Context, file multipart.File, header *
 		// — пропускаем если detected = octet-stream И extension валидный (мы уже
 		// validated content-type выше через allowedXxxTypes).
 		if detected != "application/octet-stream" {
-			return nil, fmt.Errorf(
-				"file content does not match declared type: detected=%s, claimed=%s",
-				detected, contentType)
+			// Edge: m4a (AAC в MP4-контейнере) и webm-аудио Go детектирует как
+			// video/mp4 / video/webm, потому что magic-bytes у них одинаковые
+			// с видео. Разрешаем такое несоответствие для audio-типов.
+			isAudioInVideoContainer := mediaType == "audio" &&
+				(detected == "video/mp4" || detected == "video/webm" || detected == "video/quicktime")
+			if !isAudioInVideoContainer {
+				return nil, fmt.Errorf(
+					"file content does not match declared type: detected=%s, claimed=%s",
+					detected, contentType)
+			}
 		}
 	}
 
