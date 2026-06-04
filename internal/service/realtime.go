@@ -141,6 +141,16 @@ func pushChatPinned(hub *ws.Hub, userID, chatID string, messageID *string) {
 	})
 }
 
+// pushChatMessageEdited уведомляет peer'а об изменении текста сообщения.
+// Payload содержит полный ChatMessage — frontend просто заменяет его в state.
+func pushChatMessageEdited(hub *ws.Hub, peerID string, msg postgres.ChatMessage) {
+	if hub == nil || peerID == "" {
+		return
+	}
+	msg.IsMe = false
+	hub.SendToUser(peerID, "chat.message.edited", msg)
+}
+
 // pushChatMessageDeleted — сообщение удалили автором; participant'ы должны
 // убрать его из local state.
 func pushChatMessageDeleted(hub *ws.Hub, userID, chatID, messageID string) {

@@ -188,6 +188,12 @@ func (s *ChatService) EditMessage(
 	if err != nil {
 		return postgres.ChatMessage{}, err
 	}
+	// Fan-out: peers обновляют текст сообщения без рефетча.
+	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, callerID); err == nil {
+		for _, peer := range peers {
+			pushChatMessageEdited(s.wsHub, peer, msg)
+		}
+	}
 	return msg, nil
 }
 
@@ -442,11 +448,12 @@ func (s *ChatService) ChangeMemberRole(
 	if err := s.chatRepo.UpdateParticipantRole(ctx, conversationID, targetID, newRole); err != nil {
 		return err
 	}
-	// Fan-out на всех participants (включая target) — у них обновится role-pill.
-	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, ""); err == nil {
+	// Fan-out на всех participants (включая target и самого callerID для multi-device sync).
+	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, callerID); err == nil {
 		for _, peer := range peers {
 			pushChatGroupRoleChanged(s.wsHub, peer, conversationID, targetID, newRole)
 		}
+		pushChatGroupRoleChanged(s.wsHub, callerID, conversationID, targetID, newRole)
 	}
 	return nil
 }
@@ -482,10 +489,11 @@ func (s *ChatService) UpdateGroup(
 		}
 	}
 	// WS fan-out: все участники получат обновлённый title/cover без рефетча.
-	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, ""); err == nil {
+	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, callerID); err == nil {
 		for _, peer := range peers {
 			pushChatGroupUpdated(s.wsHub, peer, conversationID, title, coverURL)
 		}
+		pushChatGroupUpdated(s.wsHub, callerID, conversationID, title, coverURL)
 	}
 	return nil
 }
@@ -532,11 +540,13 @@ func (s *ChatService) PinMessage(
 	if err := s.chatRepo.SetPinnedMessage(ctx, conversationID, messageID); err != nil {
 		return err
 	}
-	// Fan-out: все participants должны обновить sticky-banner.
-	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, ""); err == nil {
+	// Fan-out: все participants должны обновить sticky-banner, включая
+	// callerID для синхронизации других устройств.
+	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, callerID); err == nil {
 		for _, peer := range peers {
 			pushChatPinned(s.wsHub, peer, conversationID, messageID)
 		}
+		pushChatPinned(s.wsHub, callerID, conversationID, messageID)
 	}
 	return nil
 }
@@ -567,13 +577,12 @@ func (s *ChatService) DeleteMessage(
 	if err := s.chatRepo.DeleteMessage(ctx, messageID); err != nil {
 		return err
 	}
-	// Fan-out всем участникам, включая автора (чтобы синхронизировалось
-	// на других девайсах того же юзера).
-	peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, "")
-	if err == nil {
+	// Fan-out всем участникам, включая автора (синхронизация других устройств).
+	if peers, err := s.chatRepo.GetOtherParticipants(ctx, conversationID, callerID); err == nil {
 		for _, peer := range peers {
 			pushChatMessageDeleted(s.wsHub, peer, conversationID, messageID)
 		}
+		pushChatMessageDeleted(s.wsHub, callerID, conversationID, messageID)
 	}
 	return nil
 }
