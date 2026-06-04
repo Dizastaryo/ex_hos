@@ -32,8 +32,8 @@ _session = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _session
-    logger.info("Loading isnet-general-use model...")
-    _session = new_session("isnet-general-use")
+    logger.info("Loading silueta model...")
+    _session = new_session("silueta")
     logger.info("Model ready.")
     yield
     logger.info("Shutting down rembg server.")
@@ -44,7 +44,7 @@ app = FastAPI(title="rembg-server", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "isnet-general-use"}
+    return {"status": "ok", "model": "silueta"}
 
 
 @app.post("/remove-bg")
