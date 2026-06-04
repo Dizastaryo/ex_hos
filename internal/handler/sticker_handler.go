@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
+
+const rembgServerURL = "http://127.0.0.1:8004/remove-bg"
 
 type StickerHandler struct {
 	repo   *postgres.StickerRepository
@@ -46,51 +49,50 @@ func (h *StickerHandler) RemoveBg(c *fiber.Ctx) error {
 	}
 	defer uploaded.Close()
 
-	inputTmp, err := os.CreateTemp("", "rembg-in-*.png")
+	fileBytes, err := io.ReadAll(uploaded)
 	if err != nil {
-		return respondError(c, fiber.StatusInternalServerError, "failed to create temp file")
+		return respondError(c, fiber.StatusInternalServerError, "failed to read uploaded file")
 	}
-	defer os.Remove(inputTmp.Name())
 
-	if _, err := io.Copy(inputTmp, uploaded); err != nil {
-		inputTmp.Close()
-		return respondError(c, fiber.StatusInternalServerError, "failed to write uploaded file")
-	}
-	inputTmp.Close()
-
-	outputTmp, err := os.CreateTemp("", "rembg-out-*.png")
+	// Forward to persistent rembg FastAPI server (BRIA RMBG 1.4).
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", fileHeader.Filename)
 	if err != nil {
-		return respondError(c, fiber.StatusInternalServerError, "failed to create output temp file")
+		return respondError(c, fiber.StatusInternalServerError, "failed to build multipart request")
 	}
-	outputTmp.Close()
-	defer os.Remove(outputTmp.Name())
+	if _, err = fw.Write(fileBytes); err != nil {
+		return respondError(c, fiber.StatusInternalServerError, "failed to write multipart body")
+	}
+	mw.Close()
 
-	// Run rembg — try PATH first, fall back to known Windows user-packages location.
-	rembgBin := "rembg"
-	if _, err := exec.LookPath(rembgBin); err != nil {
-		candidate := filepath.Join(
-			os.Getenv("LOCALAPPDATA"),
-			`Packages\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\LocalCache\local-packages\Python310\Scripts\rembg.exe`,
-		)
-		if _, statErr := os.Stat(candidate); statErr == nil {
-			rembgBin = candidate
-		}
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(c.Context(), http.MethodPost, rembgServerURL, &buf)
+	if err != nil {
+		return respondError(c, fiber.StatusInternalServerError, "failed to build rembg request")
 	}
-	ctx, cancel := context.WithTimeout(c.Context(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, rembgBin, "i", inputTmp.Name(), outputTmp.Name())
-	if out, err := cmd.CombinedOutput(); err != nil {
-		h.logger.Error("rembg failed", zap.Error(err), zap.String("output", string(out)))
-		if ctx.Err() == context.DeadlineExceeded {
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		h.logger.Error("rembg server request failed", zap.Error(err))
+		return respondError(c, fiber.StatusBadGateway,
+			"background removal service unavailable — start rembg_server.py on port 8004")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		h.logger.Error("rembg server error", zap.Int("status", resp.StatusCode), zap.String("body", string(body)))
+		if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusGatewayTimeout {
 			return respondError(c, fiber.StatusGatewayTimeout, "background removal timed out")
 		}
-		return respondError(c, fiber.StatusInternalServerError,
-			"background removal failed — ensure rembg is installed: pip install rembg[cli]")
+		return respondError(c, fiber.StatusInternalServerError, "background removal failed")
 	}
 
-	data, err := os.ReadFile(outputTmp.Name())
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return respondError(c, fiber.StatusInternalServerError, "failed to read output file")
+		return respondError(c, fiber.StatusInternalServerError, "failed to read rembg response")
 	}
 
 	filename := fmt.Sprintf("rembg_%d.png", time.Now().UnixNano())
