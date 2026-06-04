@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -66,8 +67,11 @@ func (h *StickerHandler) RemoveBg(c *fiber.Ctx) error {
 	}
 	mw.Close()
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(c.Context(), http.MethodPost, rembgServerURL, &buf)
+	rembgCtx, rembgCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer rembgCancel()
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	req, err := http.NewRequestWithContext(rembgCtx, http.MethodPost, rembgServerURL, &buf)
 	if err != nil {
 		return respondError(c, fiber.StatusInternalServerError, "failed to build rembg request")
 	}
