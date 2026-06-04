@@ -213,7 +213,7 @@ func main() {
 				return
 			case <-ticker.C:
 				ctx, cancel := context.WithTimeout(janitorCtx, 30*time.Second)
-				n, err := chatRepo.PurgeExpired(ctx)
+				n, err := chatService.PurgeExpired(ctx)
 				cancel()
 				if err != nil {
 					if janitorCtx.Err() != nil {

@@ -726,3 +726,35 @@ func (s *ChatService) MarkRead(ctx context.Context, conversationID, userID strin
 	}
 	return nil
 }
+
+// PurgeExpired удаляет истёкшие TTL-сообщения и рассылает WS-событие
+// chat.message.deleted всем участникам затронутых чатов ДО физического удаления.
+// Janitor в cmd/api/main.go вызывает этот метод вместо chatRepo.PurgeExpired напрямую.
+func (s *ChatService) PurgeExpired(ctx context.Context) (int64, error) {
+	// Шаг 1: получаем (message_id, conversation_id, participant_id) для всех
+	// сообщений у которых истёк TTL. Делаем до DELETE чтобы участники ещё
+	// числились в conversation_participants.
+	recipients, err := s.chatRepo.GetExpiredMessageRecipients(ctx)
+	if err == nil && len(recipients) > 0 {
+		type fanout struct {
+			chatID string
+			users  map[string]struct{}
+		}
+		byMsg := map[string]*fanout{}
+		for _, r := range recipients {
+			if _, ok := byMsg[r.MessageID]; !ok {
+				byMsg[r.MessageID] = &fanout{chatID: r.ConversationID, users: map[string]struct{}{}}
+			}
+			byMsg[r.MessageID].users[r.ParticipantID] = struct{}{}
+		}
+		// Шаг 2: рассылаем chat.message.deleted каждому участнику.
+		for msgID, f := range byMsg {
+			for userID := range f.users {
+				pushChatMessageDeleted(s.wsHub, userID, f.chatID, msgID)
+			}
+		}
+	}
+
+	// Шаг 3: физически удаляем из DB.
+	return s.chatRepo.PurgeExpired(ctx)
+}

@@ -729,6 +729,38 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 	return msg, nil
 }
 
+// ExpiredMessageRecipient — минимальная информация о сообщении с истёкшим
+// TTL для WS fan-out перед удалением.
+type ExpiredMessageRecipient struct {
+	MessageID      string
+	ConversationID string
+	ParticipantID  string
+}
+
+// GetExpiredMessageRecipients возвращает все (message_id, conversation_id,
+// participant_id) для сообщений у которых истёк TTL. Вызывается janitor'ом
+// прямо ПЕРЕД PurgeExpired чтобы успеть разослать WS-события участникам.
+func (r *ChatRepository) GetExpiredMessageRecipients(ctx context.Context) ([]ExpiredMessageRecipient, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT m.id, m.conversation_id, cp.user_id
+		FROM messages m
+		JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id
+		WHERE m.expires_at IS NOT NULL AND m.expires_at <= NOW()`)
+	if err != nil {
+		return nil, fmt.Errorf("get expired recipients: %w", err)
+	}
+	defer rows.Close()
+	var out []ExpiredMessageRecipient
+	for rows.Next() {
+		var r ExpiredMessageRecipient
+		if err := rows.Scan(&r.MessageID, &r.ConversationID, &r.ParticipantID); err != nil {
+			return nil, fmt.Errorf("scan expired recipient: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // PurgeExpired удаляет все expired-сообщения (CHAT-11). Janitor в
 // cmd/api/main.go вызывает раз в 60 сек. Идёт через partial-index
 // `idx_messages_expires_at`. Возвращает count удалённых для logging.
