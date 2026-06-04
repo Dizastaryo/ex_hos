@@ -353,6 +353,8 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 		MediaDurationSeconds int       `json:"media_duration_seconds,omitempty"`
 		Waveform             []float64 `json:"waveform,omitempty"`
 		ReplyToMessageID     *string   `json:"reply_to_message_id,omitempty"`
+		ForwardedFromMessageID string  `json:"forwarded_from_message_id,omitempty"`
+		ForwardedFromSender    string  `json:"forwarded_from_sender,omitempty"`
 		// CHAT-11: TTL в секундах. nil/0 = вечно. Допустимые значения
 		// фронт-стороной — 3600/86400/604800 (1ч/24ч/7д), но бэк принимает
 		// любое положительное int. Capping на 30 дней чтобы предотвратить
@@ -379,13 +381,15 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 	}
 
 	input := postgres.SendMessageInput{
-		Text:                 req.Text,
-		AttachedMediaURL:     req.AttachedMediaURL,
-		AttachedMediaType:    req.AttachedMediaType,
-		MediaDurationSeconds: req.MediaDurationSeconds,
-		Waveform:             req.Waveform,
-		ReplyToMessageID:     req.ReplyToMessageID,
-		ExpiresInSeconds:     req.ExpiresInSeconds,
+		Text:                   req.Text,
+		AttachedMediaURL:       req.AttachedMediaURL,
+		AttachedMediaType:      req.AttachedMediaType,
+		MediaDurationSeconds:   req.MediaDurationSeconds,
+		Waveform:               req.Waveform,
+		ReplyToMessageID:       req.ReplyToMessageID,
+		ExpiresInSeconds:       req.ExpiresInSeconds,
+		ForwardedFromMessageID: req.ForwardedFromMessageID,
+		ForwardedFromSender:    req.ForwardedFromSender,
 	}
 	if hasPost {
 		input.AttachedPostID = req.AttachedPostID

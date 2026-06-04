@@ -130,6 +130,11 @@ type ChatMessage struct {
 	// IsDeletedForAll — сообщение мягко удалено для всех (WhatsApp-стиль).
 	// Если true, клиент показывает «Сообщение удалено» вместо содержимого.
 	IsDeletedForAll bool `json:"is_deleted_for_all,omitempty"`
+
+	// Forward: если сообщение переслано — ForwardedFromSender содержит
+	// username оригинального отправителя. Показывает баннер «Переслано от @X».
+	ForwardedFromMessageID *string `json:"forwarded_from_message_id,omitempty"`
+	ForwardedFromSender    string  `json:"forwarded_from_sender,omitempty"`
 }
 
 // ReplyPreview — сжатое превью оригинального message'а для отрисовки
@@ -369,7 +374,8 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 		       pu.username, pu.avatar_url,
 		       rm.id, rm.sender_id, COALESCE(ru.username, ''), COALESCE(rm.text, ''), rm.kind,
 		       COALESCE(su.full_name, ''), COALESCE(su.username, ''), COALESCE(su.avatar_url, ''),
-		       m.is_deleted_for_all
+		       m.is_deleted_for_all,
+		       m.forwarded_from_message_id, m.forwarded_from_sender
 		FROM messages m
 		LEFT JOIN LATERAL (
 			SELECT COUNT(*)                AS recipients_count,
@@ -427,6 +433,9 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 			rUsername string
 			rText     string
 			rKind     *string
+			// forward cols
+			fwdMsgID     *string
+			fwdSender    string
 		)
 		if err := rows.Scan(
 			&msg.ID, &msg.ConversationID, &msg.SenderID,
@@ -440,6 +449,7 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 			&rID, &rSenderID, &rUsername, &rText, &rKind,
 			&msg.SenderName, &msg.SenderUsername, &msg.SenderAvatarURL,
 			&msg.IsDeletedForAll,
+			&fwdMsgID, &fwdSender,
 		); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
@@ -460,6 +470,8 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 		}
 		msg.Waveform = waveform
 		msg.ReplyToMessageID = replyToID
+		msg.ForwardedFromMessageID = fwdMsgID
+		msg.ForwardedFromSender = fwdSender
 		if rID != nil && replyToID != nil {
 			rk := ""
 			if rKind != nil {
@@ -532,6 +544,10 @@ type SendMessageInput struct {
 	// ExpiresInSeconds — TTL для disappearing-сообщения (CHAT-11). 0 = вечно.
 	// Repo при INSERT'е считает absolute expires_at = NOW() + interval.
 	ExpiresInSeconds int
+
+	// Forward: пересылка чужого сообщения.
+	ForwardedFromMessageID string
+	ForwardedFromSender    string
 }
 
 // SendMessage inserts a new message and returns it.
@@ -574,6 +590,10 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 	if input.ReplyToMessageID != nil && *input.ReplyToMessageID != "" {
 		replyParam = *input.ReplyToMessageID
 	}
+	var fwdMsgIDParam any
+	if input.ForwardedFromMessageID != "" {
+		fwdMsgIDParam = input.ForwardedFromMessageID
+	}
 	// Tx: INSERT message + INSERT message_recipients атомарно. Иначе при
 	// сбое recipients-INSERT'а получили бы message без recipient-строк и
 	// счётчики в group остались бы кривыми навсегда (CHAT-10.2).
@@ -593,25 +613,30 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 		expiresParam = fmt.Sprintf("%d seconds", input.ExpiresInSeconds)
 	}
 
+	var fwdSenderOut string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO messages (conversation_id, sender_id, text, kind, attached_post_id,
 		                      attached_media_url, attached_media_type,
 		                      media_duration_seconds, waveform, reply_to_message_id,
-		                      expires_at)
+		                      expires_at, forwarded_from_message_id, forwarded_from_sender)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-		        CASE WHEN $11::text IS NULL THEN NULL ELSE NOW() + $11::interval END)
+		        CASE WHEN $11::text IS NULL THEN NULL ELSE NOW() + $11::interval END,
+		        $12, $13)
 		RETURNING id, conversation_id, sender_id, text, is_read,
 		          (delivered_at IS NOT NULL) AS is_delivered,
 		          created_at, expires_at, kind,
 		          attached_post_id, attached_media_url, attached_media_type,
-		          media_duration_seconds, waveform, reply_to_message_id`,
+		          media_duration_seconds, waveform, reply_to_message_id,
+		          forwarded_from_message_id, forwarded_from_sender`,
 		conversationID, senderID, input.Text, kind, input.AttachedPostID,
 		input.AttachedMediaURL, input.AttachedMediaType,
 		durParam, waveformParam, replyParam, expiresParam,
+		fwdMsgIDParam, input.ForwardedFromSender,
 	).Scan(&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Text,
 		&msg.IsRead, &msg.IsDelivered, &msg.CreatedAt, &msg.ExpiresAt,
 		&msg.Kind, &msg.AttachedPostID, &msg.AttachedMediaURL, &msg.AttachedMediaType,
-		&durOut, &waveformOut, &replyOut)
+		&durOut, &waveformOut, &replyOut,
+		&msg.ForwardedFromMessageID, &fwdSenderOut)
 	if err != nil {
 		return ChatMessage{}, fmt.Errorf("send message: %w", err)
 	}
@@ -648,6 +673,7 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 	}
 	msg.Waveform = waveformOut
 	msg.ReplyToMessageID = replyOut
+	msg.ForwardedFromSender = fwdSenderOut
 	msg.IsMe = true
 	msg.RecipientsCount = len(input.RecipientIDs)
 	// DeliveredCount / ReadCount уже 0 (zero-value int).
