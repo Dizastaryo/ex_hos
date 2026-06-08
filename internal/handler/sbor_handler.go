@@ -56,12 +56,13 @@ func (h *SborHandler) List(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, items, meta)
 }
 
-// GET /api/v1/sbory/me
+// GET /api/v1/sbory/me?past=true
 func (h *SborHandler) ListMine(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
-	page, limit := pagination.ParsePage(c.Query("page", "1"), c.Query("limit", "20"))
+	page, limit := pagination.ParsePage(c.Query("page", "1"), c.Query("limit", "50"))
+	past := c.Query("past") == "true"
 
-	items, meta, err := h.svc.ListMine(c.Context(), userID, page, limit)
+	items, meta, err := h.svc.ListMine(c.Context(), userID, past, page, limit)
 	if err != nil {
 		h.logger.Error("list my sbory", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to list sbory")

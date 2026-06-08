@@ -113,7 +113,7 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 
 func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilter, cityFilter string, limit, offset int) ([]*domain.Sbor, error) {
 	args := []any{viewerID, limit, offset}
-	where := "NOT s.is_cancelled"
+	where := "NOT s.is_cancelled AND (s.scheduled_at IS NULL OR s.scheduled_at > NOW() OR s.is_live = TRUE)"
 	idx := 4
 
 	if typeFilter != "" {
@@ -227,8 +227,14 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 
 // ─── My sbory ────────────────────────────────────────────────────
 
-func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, offset int) ([]*domain.Sbor, error) {
-	query := `
+func (r *SborRepository) ListMine(ctx context.Context, userID string, past bool, limit, offset int) ([]*domain.Sbor, error) {
+	timeFilter := "(s.scheduled_at IS NULL OR s.scheduled_at > NOW() OR s.is_live = TRUE)"
+	orderBy := "s.scheduled_at ASC NULLS LAST, s.created_at DESC"
+	if past {
+		timeFilter = "s.scheduled_at IS NOT NULL AND s.scheduled_at < NOW()"
+		orderBy = "s.scheduled_at DESC"
+	}
+	query := fmt.Sprintf(`
 		SELECT s.id, s.host_id, s.type, s.category, s.title, s.place,
 		       s.cover_url, s.price, s.description, s.scheduled_at, s.flexible_time, s.max_slots,
 		       s.is_live, s.created_at, s.chat_id,
@@ -250,10 +256,10 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, limit, off
 		JOIN users u ON u.id = s.host_id
 		JOIN sbor_members my_m ON my_m.sbor_id = s.id AND my_m.user_id = $1
 		LEFT JOIN sbor_members sm ON sm.sbor_id = s.id
-		WHERE NOT s.is_cancelled
+		WHERE NOT s.is_cancelled AND %s
 		GROUP BY s.id, u.full_name
-		ORDER BY s.created_at DESC
-		LIMIT $2 OFFSET $3`
+		ORDER BY %s
+		LIMIT $2 OFFSET $3`, timeFilter, orderBy)
 
 	rows, err := r.db.Pool.Query(ctx, query, userID, limit, offset)
 	if err != nil {
@@ -453,14 +459,13 @@ func formatWhen(t *time.Time, flexible bool) (when, whenSub string) {
 	}
 	now := time.Now()
 	diff := t.Sub(now)
-
 	days := int(diff.Hours() / 24)
-	weekday := russianWeekday(t.Weekday())
 	timeStr := fmt.Sprintf("%02d:%02d", t.Hour(), t.Minute())
+	fullDate := fmt.Sprintf("%d %s %d · %s", t.Day(), russianMonth(t.Month()), t.Year(), timeStr)
 
 	switch {
 	case diff < 0:
-		when = fmt.Sprintf("%s · %s", weekday, timeStr)
+		when = fullDate
 		whenSub = "прошедшее"
 	case diff < time.Hour:
 		mins := int(diff.Minutes())
@@ -471,13 +476,10 @@ func formatWhen(t *time.Time, flexible bool) (when, whenSub string) {
 		whenSub = fmt.Sprintf("через %d ч", int(diff.Hours()))
 	case days == 1:
 		when = fmt.Sprintf("Завтра · %s", timeStr)
-		whenSub = "завтра"
-	case days < 7:
-		when = fmt.Sprintf("%s · %s", weekday, timeStr)
-		whenSub = fmt.Sprintf("через %d %s", days, pluralDays(days))
-	default:
-		when = fmt.Sprintf("%s · %s", weekday, timeStr)
 		whenSub = fmt.Sprintf("%d %s", t.Day(), russianMonth(t.Month()))
+	default:
+		when = fullDate
+		whenSub = fmt.Sprintf("через %d %s", days, pluralDays(days))
 	}
 	return
 }

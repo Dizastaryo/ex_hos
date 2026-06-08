@@ -81,9 +81,9 @@ func (s *SborService) List(ctx context.Context, viewerID, typeFilter, catFilter,
 	return items, meta, nil
 }
 
-func (s *SborService) ListMine(ctx context.Context, userID string, page, limit int) ([]*domain.Sbor, pagination.Meta, error) {
+func (s *SborService) ListMine(ctx context.Context, userID string, past bool, page, limit int) ([]*domain.Sbor, pagination.Meta, error) {
 	offset := pagination.Offset(page, limit)
-	items, err := s.repo.ListMine(ctx, userID, limit+1, offset)
+	items, err := s.repo.ListMine(ctx, userID, past, limit+1, offset)
 	if err != nil {
 		return nil, pagination.Meta{}, err
 	}
