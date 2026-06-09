@@ -21,9 +21,10 @@ type ChatConversation struct {
 	CoverURL          string    `json:"cover_url,omitempty"`
 	OtherUser         *ChatUser `json:"other_user"`
 	ParticipantsCount int       `json:"participants_count,omitempty"`
-	LastMessage       string    `json:"last_message"`
-	LastSenderUsername string   `json:"last_sender_username,omitempty"`
-	LastMessageAt     time.Time `json:"last_message_at"`
+	LastMessage        string    `json:"last_message"`
+	LastMessageKind    string    `json:"last_message_kind,omitempty"`
+	LastSenderUsername string    `json:"last_sender_username,omitempty"`
+	LastMessageAt      time.Time `json:"last_message_at"`
 	UnreadCount       int       `json:"unread_count"`
 
 	// Pinned: nil если ничего не закреплено.
@@ -233,6 +234,7 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 			u.posts_count, u.followers_count, u.following_count, u.created_at,
 			(SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = c.id) AS participants_count,
 			CASE WHEN m.is_deleted_for_all THEN 'Сообщение удалено' ELSE COALESCE(m.text, '') END,
+			COALESCE(m.kind, ''),
 			COALESCE(sender.username, ''),
 			COALESCE(m.created_at, c.created_at),
 			(SELECT COUNT(*) FROM messages WHERE conversation_id = c.id AND sender_id != $1 AND is_read = false),
@@ -258,7 +260,7 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 			LIMIT 1
 		) u ON c.kind = 'direct'
 		LEFT JOIN LATERAL (
-			SELECT text, created_at, sender_id, is_deleted_for_all FROM messages
+			SELECT text, created_at, sender_id, is_deleted_for_all, kind FROM messages
 			WHERE conversation_id = c.id
 			ORDER BY created_at DESC LIMIT 1
 		) m ON true
@@ -295,6 +297,7 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 			&otherPostsCount, &otherFollowersCount, &otherFollowingCount, &otherCreatedAt,
 			&conv.ParticipantsCount,
 			&conv.LastMessage,
+			&conv.LastMessageKind,
 			&conv.LastSenderUsername,
 			&conv.LastMessageAt,
 			&conv.UnreadCount,
