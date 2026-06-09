@@ -39,3 +39,14 @@ uploads/
 # OS
 .DS_Store
 Thumbs.db
+
+# compiled binaries
+api_server
+video_server
+library_server
+
+# runtime junk
+null
+
+# request logs
+logs/*.jsonl
