@@ -563,11 +563,14 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 	if input.AttachedPostID != nil && *input.AttachedPostID != "" {
 		kind = "shared_post"
 	} else if input.AttachedMediaURL != "" {
-		// Audio → voice-message kind. Иные media (image, video) → image kind
-		// для backwards-совместимости с существующими bubble-render'ами.
-		if input.AttachedMediaType == "audio" {
+		switch input.AttachedMediaType {
+		case "audio":
 			kind = "voice"
-		} else {
+		case "video_note":
+			kind = "video_note"
+		case "video":
+			kind = "video"
+		default:
 			kind = "image"
 			if input.AttachedMediaType == "" {
 				input.AttachedMediaType = "image"
