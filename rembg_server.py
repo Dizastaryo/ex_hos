@@ -2,24 +2,24 @@
 Persistent FastAPI background-removal server.
 
 Model is selected via REMBG_MODEL env variable:
-    birefnet-general-lite  — default, fast, ~60 MB,  good for local dev / weak CPU
-    birefnet-portrait      — production, ~400 MB, best quality for human subjects
+    silueta           — default, ~43 MB, fast on any CPU, good for local dev
+    birefnet-portrait — production, ~400 MB, best quality for human subjects (needs GPU)
 
 Install:
-    pip install fastapi uvicorn rembg pillow          # CPU
-    pip install fastapi uvicorn "rembg[gpu]" pillow   # NVIDIA GPU (Linux/Windows)
+    pip install fastapi uvicorn rembg pillow          # CPU (local)
+    pip install fastapi uvicorn "rembg[gpu]" pillow   # NVIDIA GPU (production)
 
 Run:
-    python rembg_server.py
-    REMBG_MODEL=birefnet-portrait python rembg_server.py   # production
+    python rembg_server.py                                    # local (silueta)
+    REMBG_MODEL=birefnet-portrait python rembg_server.py      # production
 
 Endpoint:
     POST /remove-bg   multipart/form-data field: "file"  → PNG bytes
     GET  /health                                         → {"status": "ok", "model": "..."}
 
 Notes:
-    - First run downloads the model from HuggingFace automatically.
-    - alpha_matting=True is enabled for smoother hair/edge blending.
+    - silueta model is bundled — no download needed on first run.
+    - birefnet-portrait downloads ~400 MB from HuggingFace on first run.
     - Images larger than MAX_DIM are downscaled before inference and the
       result is upscaled back, keeping quality high while limiting memory use.
 """
@@ -37,8 +37,8 @@ from rembg import new_session, remove
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-# birefnet-general-lite on local (fast, light), birefnet-portrait on prod (best quality).
-MODEL_NAME = os.getenv("REMBG_MODEL", "birefnet-general-lite")
+# silueta locally (fast, ~43 MB), birefnet-portrait on production GPU server.
+MODEL_NAME = os.getenv("REMBG_MODEL", "silueta")
 
 # Resize input to this maximum dimension before inference.
 # Keeps memory use predictable; result is rescaled back to original size.
@@ -51,7 +51,7 @@ _session = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _session
-    logger.info("Loading %s model (first run downloads ~400 MB)...", MODEL_NAME)
+    logger.info("Loading %s model...", MODEL_NAME)
     _session = new_session(MODEL_NAME)
     logger.info("Model ready.")
     yield
@@ -102,14 +102,7 @@ async def remove_bg(file: UploadFile = File(...)):
 
     try:
         data, original_size = _preprocess(data)
-        result = remove(
-            data,
-            session=_session,
-            alpha_matting=True,
-            alpha_matting_foreground_threshold=240,
-            alpha_matting_background_threshold=10,
-            alpha_matting_erode_size=10,
-        )
+        result = remove(data, session=_session)
         result = _postprocess(result, original_size)
     except Exception as e:
         logger.error("rembg inference failed: %s", e)
