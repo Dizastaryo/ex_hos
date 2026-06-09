@@ -1,31 +1,32 @@
 """
-Persistent FastAPI background-removal server using BiRefNet-portrait.
+Persistent FastAPI background-removal server.
 
-Model is loaded once at startup and kept in memory → fast inference.
-BiRefNet-portrait delivers state-of-the-art quality on human subjects:
-sharp hair edges, correct silhouettes, handles complex backgrounds.
+Model is selected via REMBG_MODEL env variable:
+    birefnet-general-lite  — default, fast, ~60 MB,  good for local dev / weak CPU
+    birefnet-portrait      — production, ~400 MB, best quality for human subjects
 
 Install:
-    pip install fastapi uvicorn "rembg[gpu]" pillow
+    pip install fastapi uvicorn rembg pillow          # CPU
+    pip install fastapi uvicorn "rembg[gpu]" pillow   # NVIDIA GPU (Linux/Windows)
 
 Run:
     python rembg_server.py
-    # or:
-    uvicorn rembg_server:app --host 127.0.0.1 --port 8004
+    REMBG_MODEL=birefnet-portrait python rembg_server.py   # production
 
 Endpoint:
     POST /remove-bg   multipart/form-data field: "file"  → PNG bytes
     GET  /health                                         → {"status": "ok", "model": "..."}
 
 Notes:
-    - First run downloads the model (~400 MB) from HuggingFace automatically.
+    - First run downloads the model from HuggingFace automatically.
     - alpha_matting=True is enabled for smoother hair/edge blending.
     - Images larger than MAX_DIM are downscaled before inference and the
-      result is upscaled back, keeping quality high while limiting VRAM use.
+      result is upscaled back, keeping quality high while limiting memory use.
 """
 
 import io
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -36,7 +37,8 @@ from rembg import new_session, remove
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "birefnet-portrait"
+# birefnet-general-lite on local (fast, light), birefnet-portrait on prod (best quality).
+MODEL_NAME = os.getenv("REMBG_MODEL", "birefnet-general-lite")
 
 # Resize input to this maximum dimension before inference.
 # Keeps memory use predictable; result is rescaled back to original size.
