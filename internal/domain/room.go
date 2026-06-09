@@ -15,8 +15,9 @@ type Room struct {
 	// Computed on load
 	ParticipantCount int               `json:"participant_count"`
 	Participants     []RoomParticipant `json:"participants,omitempty"`
-	LastMessage      string            `json:"last_message,omitempty"`
-	LastMessageAt    *time.Time        `json:"last_message_at,omitempty"`
+	LastMessage         string     `json:"last_message,omitempty"`
+	LastSenderUsername  string     `json:"last_sender_username,omitempty"`
+	LastMessageAt       *time.Time `json:"last_message_at,omitempty"`
 	IsJoined         bool              `json:"is_joined"`
 	IsMuted          bool              `json:"is_muted"`
 	IsAdmin          bool              `json:"is_admin"`

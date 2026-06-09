@@ -87,7 +87,7 @@ func (r *RoomRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 		return nil, domain.ErrForbidden
 	}
 	room.Participants = r.getParticipants(ctx, id)
-	room.LastMessage, room.LastMessageAt = r.getLastMessage(ctx, id)
+	room.LastMessage, room.LastSenderUsername, room.LastMessageAt = r.getLastMessage(ctx, id)
 	// Voice channel data
 	vp := r.getVoiceParticipants(ctx, id)
 	room.VoiceParticipants = vp
@@ -137,7 +137,7 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 		}
 		// Load a few participants for preview (avatar stack in UI)
 		room.Participants = r.getParticipantsLimit(ctx, room.ID, 5)
-		room.LastMessage, room.LastMessageAt = r.getLastMessage(ctx, room.ID)
+		room.LastMessage, room.LastSenderUsername, room.LastMessageAt = r.getLastMessage(ctx, room.ID)
 		// Voice count for list preview
 		vids, _ := r.GetVoiceParticipantIDs(ctx, room.ID)
 		room.VoiceCount = len(vids)
@@ -572,15 +572,19 @@ func (r *RoomRepository) getVoiceParticipants(ctx context.Context, roomID string
 	return out
 }
 
-func (r *RoomRepository) getLastMessage(ctx context.Context, roomID string) (string, *time.Time) {
-	var text string
+func (r *RoomRepository) getLastMessage(ctx context.Context, roomID string) (string, string, *time.Time) {
+	var text, senderUsername string
 	var at time.Time
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT text, created_at FROM room_messages WHERE room_id=$1 ORDER BY created_at DESC LIMIT 1`,
+		`SELECT rm.text, u.username, rm.created_at
+		 FROM room_messages rm
+		 JOIN users u ON u.id = rm.sender_id
+		 WHERE rm.room_id=$1
+		 ORDER BY rm.created_at DESC LIMIT 1`,
 		roomID,
-	).Scan(&text, &at)
+	).Scan(&text, &senderUsername, &at)
 	if err != nil {
-		return "", nil
+		return "", "", nil
 	}
-	return text, &at
+	return text, senderUsername, &at
 }
