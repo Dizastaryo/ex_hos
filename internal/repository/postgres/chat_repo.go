@@ -573,6 +573,8 @@ func (r *ChatRepository) SendMessage(ctx context.Context, conversationID, sender
 			kind = "video_note"
 		case "video":
 			kind = "video"
+		case "file":
+			kind = "file"
 		default:
 			kind = "image"
 			if input.AttachedMediaType == "" {
