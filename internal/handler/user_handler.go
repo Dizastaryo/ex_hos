@@ -310,6 +310,20 @@ func (h *UserHandler) GetFollowers(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, followers, meta)
 }
 
+// GET /api/v1/users/me/mutuals — mutual followers of the current user.
+func (h *UserHandler) GetMutuals(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	mutuals, err := h.userService.GetMutuals(c.Context(), userID)
+	if err != nil {
+		h.logger.Error("get mutuals", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get mutuals")
+	}
+	if mutuals == nil {
+		mutuals = []*domain.UserShort{}
+	}
+	return respondSuccess(c, fiber.StatusOK, mutuals, nil)
+}
+
 // GetFollowing godoc
 // GET /api/v1/users/:username/following
 func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {

@@ -163,10 +163,11 @@ func (r *RoomRepository) Join(ctx context.Context, roomID, userID string) error 
 	return domain.ErrForbidden
 }
 
-// InviteMember adds a user to a private room. Creator or any admin may do this.
-func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, userID string) error {
+// InviteMember sends a pending invitation. Only admin/creator may invite.
+// Invitee must be a mutual follower with the inviter.
+// Creates a pending invite row; the invitee must accept to join.
+func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, inviteeID string) error {
 	if !r.isAdminOrCreator(ctx, roomID, inviterID) {
-		// Check room exists first
 		var exists bool
 		_ = r.db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1)`, roomID).Scan(&exists)
 		if !exists {
@@ -174,11 +175,131 @@ func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, us
 		}
 		return domain.ErrForbidden
 	}
-	_, err := r.db.Pool.Exec(ctx,
-		`INSERT INTO room_participants (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-		roomID, userID,
-	)
+	// Mutual follow check
+	var mutual bool
+	_ = r.db.Pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id=$1 AND following_id=$2)
+		   AND EXISTS(SELECT 1 FROM follows WHERE follower_id=$2 AND following_id=$1)`,
+		inviterID, inviteeID).Scan(&mutual)
+	if !mutual {
+		return domain.ErrNotMutualFollow
+	}
+	// Already a member?
+	var isMember bool
+	_ = r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM room_participants WHERE room_id=$1 AND user_id=$2)`,
+		roomID, inviteeID).Scan(&isMember)
+	if isMember {
+		return domain.ErrAlreadyInvited
+	}
+	// Upsert invite: re-invite after decline resets to pending.
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO room_invites (room_id, inviter_id, invitee_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (room_id, invitee_id) DO UPDATE
+			SET status='pending', inviter_id=EXCLUDED.inviter_id, created_at=now()
+			WHERE room_invites.status='declined'`,
+		roomID, inviterID, inviteeID)
 	return err
+}
+
+// AcceptInvite accepts a pending invite: adds the user to room_participants.
+func (r *RoomRepository) AcceptInvite(ctx context.Context, inviteID, userID string) (*domain.RoomInvite, error) {
+	var inv domain.RoomInvite
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT ri.id, ri.room_id, r.name, ri.inviter_id
+		FROM room_invites ri
+		JOIN rooms r ON r.id = ri.room_id
+		WHERE ri.id=$1 AND ri.invitee_id=$2 AND ri.status='pending'`,
+		inviteID, userID).Scan(&inv.ID, &inv.RoomID, &inv.RoomName, &inv.InviterID)
+	if err == pgx.ErrNoRows {
+		return nil, domain.ErrRoomNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err = r.db.Pool.Exec(ctx,
+		`UPDATE room_invites SET status='accepted' WHERE id=$1`, inviteID); err != nil {
+		return nil, err
+	}
+	_, err = r.db.Pool.Exec(ctx,
+		`INSERT INTO room_participants (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+		inv.RoomID, userID)
+	return &inv, err
+}
+
+// DeclineInvite marks a pending invite as declined.
+func (r *RoomRepository) DeclineInvite(ctx context.Context, inviteID, userID string) error {
+	res, err := r.db.Pool.Exec(ctx,
+		`UPDATE room_invites SET status='declined' WHERE id=$1 AND invitee_id=$2 AND status='pending'`,
+		inviteID, userID)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return domain.ErrRoomNotFound
+	}
+	return nil
+}
+
+// GetPendingInvites returns all pending room invites for a user.
+func (r *RoomRepository) GetPendingInvites(ctx context.Context, userID string) ([]domain.RoomInvite, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT ri.id, ri.room_id, r.name, COALESCE(r.cover_url,''),
+		       ri.inviter_id, u.full_name, u.username, COALESCE(u.avatar_url,''),
+		       ri.created_at
+		FROM room_invites ri
+		JOIN rooms r ON r.id = ri.room_id
+		JOIN users u ON u.id = ri.inviter_id
+		WHERE ri.invitee_id=$1 AND ri.status='pending'
+		ORDER BY ri.created_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var invites []domain.RoomInvite
+	for rows.Next() {
+		var inv domain.RoomInvite
+		if err := rows.Scan(
+			&inv.ID, &inv.RoomID, &inv.RoomName, &inv.RoomCover,
+			&inv.InviterID, &inv.InviterName, &inv.InviterUsername, &inv.InviterAvatar,
+			&inv.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		invites = append(invites, inv)
+	}
+	return invites, rows.Err()
+}
+
+// GetMutualCandidates returns mutual followers of userID who are not already members of roomID.
+func (r *RoomRepository) GetMutualCandidates(ctx context.Context, userID, roomID string) ([]domain.RoomMember, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT u.id, u.full_name, u.username, COALESCE(u.avatar_url,'')
+		FROM follows f1
+		JOIN follows f2 ON f2.follower_id = f1.following_id AND f2.following_id = f1.follower_id
+		JOIN users u ON u.id = f1.following_id
+		WHERE f1.follower_id = $1
+		  AND NOT EXISTS (
+		      SELECT 1 FROM room_participants rp WHERE rp.room_id=$2 AND rp.user_id=u.id
+		  )
+		  AND NOT EXISTS (
+		      SELECT 1 FROM room_invites ri WHERE ri.room_id=$2 AND ri.invitee_id=u.id AND ri.status='pending'
+		  )
+		ORDER BY u.full_name`, userID, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []domain.RoomMember
+	for rows.Next() {
+		var m domain.RoomMember
+		if err := rows.Scan(&m.UserID, &m.FullName, &m.Username, &m.AvatarURL); err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	return result, rows.Err()
 }
 
 // RemoveMember removes a member from a room. Creator or any admin may do this,
@@ -320,7 +441,10 @@ func (r *RoomRepository) UpdateRoom(ctx context.Context, roomID, requesterID str
 	return err
 }
 
-// SetAdmin grants or revokes admin status. Only the creator may do this.
+// SetAdmin transfers or revokes admin status.
+// Grant (transfer): any current admin may transfer their role to a member.
+//   The granter loses admin (unless they are the creator).
+// Revoke: only the creator can revoke admin without losing their own role.
 func (r *RoomRepository) SetAdmin(ctx context.Context, roomID, requesterID, targetID string, grant bool) error {
 	var creatorID string
 	err := r.db.Pool.QueryRow(ctx, `SELECT creator_id FROM rooms WHERE id=$1`, roomID).Scan(&creatorID)
@@ -330,13 +454,18 @@ func (r *RoomRepository) SetAdmin(ctx context.Context, roomID, requesterID, targ
 	if err != nil {
 		return fmt.Errorf("set admin check: %w", err)
 	}
-	if creatorID != requesterID {
-		return domain.ErrForbidden
+	if grant {
+		if !r.isAdminOrCreator(ctx, roomID, requesterID) {
+			return domain.ErrForbidden
+		}
+	} else {
+		if creatorID != requesterID {
+			return domain.ErrForbidden
+		}
 	}
 	if targetID == creatorID {
 		return nil // creator is always admin, no-op
 	}
-	// Target must be a member
 	var isMember bool
 	_ = r.db.Pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM room_participants WHERE room_id=$1 AND user_id=$2)`, roomID, targetID,
@@ -346,8 +475,16 @@ func (r *RoomRepository) SetAdmin(ctx context.Context, roomID, requesterID, targ
 	}
 	_, err = r.db.Pool.Exec(ctx,
 		`UPDATE room_participants SET is_admin=$3 WHERE room_id=$1 AND user_id=$2`,
-		roomID, targetID, grant,
-	)
+		roomID, targetID, grant)
+	if err != nil {
+		return err
+	}
+	// Transfer: revoke admin from granter (unless they are the creator).
+	if grant && requesterID != creatorID {
+		_, err = r.db.Pool.Exec(ctx,
+			`UPDATE room_participants SET is_admin=false WHERE room_id=$1 AND user_id=$2`,
+			roomID, requesterID)
+	}
 	return err
 }
 

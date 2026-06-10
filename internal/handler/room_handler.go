@@ -120,14 +120,75 @@ func (h *RoomHandler) InviteMember(c *fiber.Ctx) error {
 	if err := h.svc.InviteMember(c.Context(), id, userID, req.UserID); err != nil {
 		switch err {
 		case domain.ErrForbidden:
-			return respondError(c, fiber.StatusForbidden, "only the creator can invite members")
+			return respondError(c, fiber.StatusForbidden, "only admins can invite members")
 		case domain.ErrRoomNotFound:
 			return respondError(c, fiber.StatusNotFound, "room not found")
+		case domain.ErrNotMutualFollow:
+			return respondError(c, fiber.StatusForbidden, "not a mutual follower")
+		case domain.ErrAlreadyInvited:
+			return respondError(c, fiber.StatusConflict, "already invited or a member")
 		}
 		h.logger.Error("invite room member", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to invite member")
 	}
-	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "invited"}, nil)
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "invite sent"}, nil)
+}
+
+// GET /api/v1/rooms/invites/me
+func (h *RoomHandler) GetMyInvites(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	invites, err := h.svc.GetMyInvites(c.Context(), userID)
+	if err != nil {
+		h.logger.Error("get my invites", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get invites")
+	}
+	if invites == nil {
+		invites = []domain.RoomInvite{}
+	}
+	return respondSuccess(c, fiber.StatusOK, invites, nil)
+}
+
+// POST /api/v1/rooms/invites/:inviteId/accept
+func (h *RoomHandler) AcceptInvite(c *fiber.Ctx) error {
+	inviteID := c.Params("inviteId")
+	userID := middleware.GetUserID(c)
+	if err := h.svc.AcceptInvite(c.Context(), inviteID, userID); err != nil {
+		if err == domain.ErrRoomNotFound {
+			return respondError(c, fiber.StatusNotFound, "invite not found")
+		}
+		h.logger.Error("accept invite", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to accept invite")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "accepted"}, nil)
+}
+
+// POST /api/v1/rooms/invites/:inviteId/decline
+func (h *RoomHandler) DeclineInvite(c *fiber.Ctx) error {
+	inviteID := c.Params("inviteId")
+	userID := middleware.GetUserID(c)
+	if err := h.svc.DeclineInvite(c.Context(), inviteID, userID); err != nil {
+		if err == domain.ErrRoomNotFound {
+			return respondError(c, fiber.StatusNotFound, "invite not found")
+		}
+		h.logger.Error("decline invite", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to decline invite")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "declined"}, nil)
+}
+
+// GET /api/v1/rooms/:id/candidates
+func (h *RoomHandler) GetCandidates(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := middleware.GetUserID(c)
+	candidates, err := h.svc.GetMutualCandidates(c.Context(), userID, id)
+	if err != nil {
+		h.logger.Error("get candidates", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get candidates")
+	}
+	if candidates == nil {
+		candidates = []domain.RoomMember{}
+	}
+	return respondSuccess(c, fiber.StatusOK, candidates, nil)
 }
 
 // DELETE /api/v1/rooms/:id/members/:userId

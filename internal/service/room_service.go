@@ -69,21 +69,45 @@ func (s *RoomService) Join(ctx context.Context, roomID, userID string) (*domain.
 	return room, nil
 }
 
-func (s *RoomService) InviteMember(ctx context.Context, roomID, inviterID, userID string) error {
-	if err := s.repo.InviteMember(ctx, roomID, inviterID, userID); err != nil {
+func (s *RoomService) InviteMember(ctx context.Context, roomID, inviterID, inviteeID string) error {
+	if err := s.repo.InviteMember(ctx, roomID, inviterID, inviteeID); err != nil {
 		return err
 	}
-	// Notify the invited user so their room list refreshes.
-	s.hub.SendToUsers([]string{userID}, "room.invited", map[string]any{
+	// Notify invitee so they see the new invite badge.
+	s.hub.SendToUsers([]string{inviteeID}, "room.invite_received", map[string]any{
 		"room_id": roomID,
 	})
-	// Notify existing members that someone new was added.
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	return nil
+}
+
+func (s *RoomService) AcceptInvite(ctx context.Context, inviteID, userID string) error {
+	inv, err := s.repo.AcceptInvite(ctx, inviteID, userID)
+	if err != nil {
+		return err
+	}
+	// Notify the user their room list should refresh.
+	s.hub.SendToUsers([]string{userID}, "room.invited", map[string]any{
+		"room_id": inv.RoomID,
+	})
+	// Notify existing members that someone joined.
+	ids, _ := s.repo.GetParticipantIDs(ctx, inv.RoomID)
 	s.hub.SendToUsers(ids, "room.member_added", map[string]any{
-		"room_id": roomID,
+		"room_id": inv.RoomID,
 		"user_id": userID,
 	})
 	return nil
+}
+
+func (s *RoomService) DeclineInvite(ctx context.Context, inviteID, userID string) error {
+	return s.repo.DeclineInvite(ctx, inviteID, userID)
+}
+
+func (s *RoomService) GetMyInvites(ctx context.Context, userID string) ([]domain.RoomInvite, error) {
+	return s.repo.GetPendingInvites(ctx, userID)
+}
+
+func (s *RoomService) GetMutualCandidates(ctx context.Context, userID, roomID string) ([]domain.RoomMember, error) {
+	return s.repo.GetMutualCandidates(ctx, userID, roomID)
 }
 
 func (s *RoomService) RemoveMember(ctx context.Context, roomID, requesterID, targetID string) error {

@@ -98,6 +98,40 @@ func (r *FollowRepository) Delete(ctx context.Context, followerID, followingID s
 	return nil
 }
 
+// GetMutuals returns users that userID follows AND who follow userID back.
+func (r *FollowRepository) GetMutuals(ctx context.Context, userID string) ([]*domain.User, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT u.id, u.username, u.phone, u.full_name, u.bio, u.avatar_url, u.website,
+		       u.gender, u.date_of_birth, u.device_public_id, u.device_private_id,
+		       u.is_private, u.is_verified, u.posts_count, u.followers_count, u.following_count,
+		       u.last_seen_at, COALESCE(u.hide_last_seen, false),
+		       COALESCE(u.channel_about, ''), COALESCE(u.channel_banner_url, ''),
+		       u.created_at, u.updated_at
+		FROM users u
+		INNER JOIN follows f1 ON f1.following_id = u.id AND f1.follower_id = $1
+		INNER JOIN follows f2 ON f2.follower_id = u.id AND f2.following_id = $1
+		ORDER BY u.full_name`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get mutuals: %w", err)
+	}
+	defer rows.Close()
+	var users []*domain.User
+	for rows.Next() {
+		u := &domain.User{}
+		if err := rows.Scan(
+			&u.ID, &u.Username, &u.Phone, &u.FullName, &u.Bio, &u.AvatarURL, &u.Website,
+			&u.Gender, &u.DateOfBirth, &u.DevicePublicID, &u.DevicePrivateID,
+			&u.IsPrivate, &u.IsVerified, &u.PostsCount, &u.FollowersCount, &u.FollowingCount,
+			&u.LastSeenAt, &u.HideLastSeen, &u.ChannelAbout, &u.ChannelBannerURL,
+			&u.CreatedAt, &u.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
 func (r *FollowRepository) IsFollowing(ctx context.Context, followerID, followingID string) (bool, error) {
 	var exists bool
 	err := r.db.Pool.QueryRow(ctx,

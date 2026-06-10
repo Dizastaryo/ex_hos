@@ -244,6 +244,14 @@ func (s *UserService) GetFollowing(ctx context.Context, username, viewerID strin
 	return toUserShortList(users), nil
 }
 
+func (s *UserService) GetMutuals(ctx context.Context, userID string) ([]*domain.UserShort, error) {
+	users, err := s.followRepo.GetMutuals(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return toUserShortList(users), nil
+}
+
 // checkPrivacy — приватный профиль виден только владельцу и подписчикам.
 // Используется для followers/following — Instagram скрывает оба списка
 // у приватных юзеров от не-подписчиков.

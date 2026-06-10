@@ -79,10 +79,25 @@ type RoomMember struct {
 	JoinedAt  time.Time `json:"joined_at"`
 }
 
-var ErrRoomNotFound = newRoomErr("room not found")
-var ErrRoomClosed   = newRoomErr("room is closed")
-var ErrNotInRoom    = newRoomErr("not a member of this room")
-var ErrNotInVoice   = newRoomErr("not in voice channel")
+// RoomInvite is a pending invitation to join a room.
+type RoomInvite struct {
+	ID              string    `json:"id"`
+	RoomID          string    `json:"room_id"`
+	RoomName        string    `json:"room_name"`
+	RoomCover       string    `json:"room_cover,omitempty"`
+	InviterID       string    `json:"inviter_id"`
+	InviterName     string    `json:"inviter_name"`
+	InviterUsername string    `json:"inviter_username"`
+	InviterAvatar   string    `json:"inviter_avatar,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+var ErrRoomNotFound    = newRoomErr("room not found")
+var ErrRoomClosed      = newRoomErr("room is closed")
+var ErrNotInRoom       = newRoomErr("not a member of this room")
+var ErrNotInVoice      = newRoomErr("not in voice channel")
+var ErrNotMutualFollow = newRoomErr("not a mutual follower")
+var ErrAlreadyInvited  = newRoomErr("already invited or a member")
 
 func newRoomErr(s string) error { return roomErrString(s) }
 
