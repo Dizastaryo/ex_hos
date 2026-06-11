@@ -168,7 +168,8 @@ func main() {
 		OTPMaxPerHr:  cfg.OTP.MaxPerHour,
 		Logger:       logger,
 	})
-	userService := service.NewUserService(userRepo, followRepo, frRepo, wsHub, cache, logger)
+	// userService инициализируется ниже, после device repos (нужен scannerRepo).
+	var userService *service.UserService
 	// MediaService must come before post/story services that take it as a dep
 	// to release dedup refs on delete.
 	mediaService := service.NewMediaService(db.Pool, logger, r2Client)
@@ -237,9 +238,16 @@ func main() {
 	restrictionService := service.NewRestrictionService(restrictionRepo, userRepo, logger)
 	closeFriendsService := service.NewCloseFriendsService(closeFriendsRepo, userRepo, logger)
 
+	// BLE Device & Scanner
+	deviceRepo := postgres.NewDeviceRepository(db)
+	scannerRepo := postgres.NewScannerRepository(db)
+	deviceService := service.NewDeviceService(deviceRepo, userRepo, cfg.Device.Secret, logger)
+	// Пересоздаём userService с scannerRepo (нужен для UpdateScanProfile)
+	userService = service.NewUserService(userRepo, followRepo, frRepo, scannerRepo, wsHub, cache, logger)
+
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, validate, logger)
-	userHandler := handler.NewUserHandler(userService, postService, followService, exportService, validate, logger)
+	userHandler := handler.NewUserHandler(userService, postService, followService, exportService, deviceService, validate, logger)
 	postHandler := handler.NewPostHandler(postService, validate, logger)
 	storyHandler := handler.NewStoryHandler(storyService, validate, logger)
 	commentHandler := handler.NewCommentHandler(commentService, validate, logger)
@@ -259,7 +267,7 @@ func main() {
 	aiHandler := handler.NewAIHandlerWithDeps(aiMasksRepo, aiStylRepo, logger)
 	dailyPromptHandler := handler.NewDailyPromptHandler()
 	reportHandler := handler.NewReportHandler(reportService, validate, logger)
-	adminHandler := handler.NewAdminHandler(userRepo, reportRepo, auditRepo, audioRepo, userService, logger)
+	adminHandler := handler.NewAdminHandler(userRepo, reportRepo, auditRepo, audioRepo, deviceRepo, userService, deviceService, logger)
 	blockHandler := handler.NewBlockHandler(blockService, logger)
 	restrictionHandler := handler.NewRestrictionHandler(restrictionService, logger)
 	closeFriendsHandler := handler.NewCloseFriendsHandler(closeFriendsService, logger)
@@ -379,6 +387,7 @@ func main() {
 	users.Get("/me/follow-requests", middleware.Auth(jwtManager, sessionStore, userRepo), followHandler.ListMyFollowRequests)
 	users.Post("/me/device", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.BindMyDevice)
 	users.Delete("/me/device", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.UnbindMyDevice)
+	users.Put("/me/scan-profile", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.UpdateScanProfile)
 	users.Post("/:username/block", middleware.Auth(jwtManager, sessionStore, userRepo), blockHandler.Block)
 	users.Delete("/:username/block", middleware.Auth(jwtManager, sessionStore, userRepo), blockHandler.Unblock)
 	users.Get("/me/restrictions", middleware.Auth(jwtManager, sessionStore, userRepo), restrictionHandler.ListRestricted)
@@ -526,6 +535,7 @@ func main() {
 	sbory.Delete("/:id/requests", sborHandler.CancelRequest)
 	sbory.Get("/:id/requests", sborHandler.ListRequests)
 	sbory.Post("/:id/requests/:reqID/approve", sborHandler.ApproveRequest)
+	sbory.Get("/:id/members", sborHandler.GetMembers)
 	sbory.Post("/:id/requests/:reqID/reject", sborHandler.RejectRequest)
 
 	// Rooms (Discord-style voice + text rooms)
@@ -551,6 +561,7 @@ func main() {
 	rooms.Delete("/:id/admins/:userId", roomHandler.RevokeAdmin)
 	rooms.Get("/:id/messages", roomHandler.GetMessages)
 	rooms.Post("/:id/messages", roomHandler.SendMessage)
+	rooms.Post("/:id/messages/:msgId/react", roomHandler.ReactMessage)
 
 	// Stickers
 	stickersGroup := api.Group("/stickers", middleware.Auth(jwtManager, sessionStore, userRepo))
@@ -631,6 +642,12 @@ func main() {
 	admin.Get("/audio-tracks", adminHandler.ListAudioTracks)
 	admin.Post("/audio-tracks/:id/approve", adminHandler.ApproveAudioTrack)
 	admin.Post("/audio-tracks/:id/reject", adminHandler.RejectAudioTrack)
+
+	// BLE devices — генерация, список, CSV-экспорт для прошивки
+	admin.Post("/devices/generate", adminHandler.GenerateDevices)
+	admin.Get("/devices/export.csv", adminHandler.ExportDevicesCSV)
+	admin.Get("/devices", adminHandler.ListDevices)
+	admin.Delete("/devices/:id", adminHandler.DeactivateDevice)
 
 	// WebSocket — requires upgrade check middleware before the actual handler
 	api.Get("/ws",

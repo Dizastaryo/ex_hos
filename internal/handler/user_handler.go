@@ -15,6 +15,7 @@ type UserHandler struct {
 	postService   *service.PostService
 	followService *service.FollowService
 	exportService *service.ExportService
+	deviceService *service.DeviceService
 	validate      *validator.Validate
 	logger        *zap.Logger
 }
@@ -24,6 +25,7 @@ func NewUserHandler(
 	postService *service.PostService,
 	followService *service.FollowService,
 	exportService *service.ExportService,
+	deviceService *service.DeviceService,
 	validate *validator.Validate,
 	logger *zap.Logger,
 ) *UserHandler {
@@ -32,6 +34,7 @@ func NewUserHandler(
 		postService:   postService,
 		followService: followService,
 		exportService: exportService,
+		deviceService: deviceService,
 		validate:      validate,
 		logger:        logger,
 	}
@@ -122,14 +125,17 @@ func (h *UserHandler) DeleteMe(c *fiber.Ctx) error {
 }
 
 type bindDeviceReq struct {
-	DevicePublicID string `json:"device_public_id" validate:"required,min=4,max=40"`
+	// SerialNumber — серийный номер с QR-наклейки браслета (SEEU_XXXXXXX).
+	// Backend резолвит серийник в public/private id и сохраняет хэши в аккаунт.
+	SerialNumber string `json:"serial_number" validate:"required,min=4,max=40"`
 }
 
 // BindMyDevice godoc
 // POST /api/v1/users/me/device
 //
-// Привязать BLE-метку к текущему юзеру. Если другой юзер уже привязал этот
-// device_public_id — 409 Conflict.
+// Привязать браслет к аккаунту по серийному номеру с QR-наклейки.
+// Если браслет уже привязан к другому юзеру — 409 Conflict.
+// Если серийник не найден или деактивирован — 404.
 func (h *UserHandler) BindMyDevice(c *fiber.Ctx) error {
 	userID := middleware.GetUserID(c)
 	var req bindDeviceReq
@@ -139,13 +145,18 @@ func (h *UserHandler) BindMyDevice(c *fiber.Ctx) error {
 	if err := h.validate.Struct(&req); err != nil {
 		return respondValidationError(c, err)
 	}
-	if err := h.userService.BindDevice(c.Context(), userID, req.DevicePublicID); err != nil {
-		if err == domain.ErrAlreadyExists {
+	if err := h.deviceService.BindDeviceToUser(c.Context(), userID, req.SerialNumber); err != nil {
+		switch err {
+		case domain.ErrAlreadyExists:
 			return respondError(c, fiber.StatusConflict, "device already bound to another user")
+		case domain.ErrNotFound:
+			return respondError(c, fiber.StatusNotFound, "device serial not found or inactive")
 		}
 		h.logger.Error("bind device", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to bind device")
 	}
+	// Инвалидируем кэш чтобы /me вернул свежий device_public_id
+	_ = h.userService.InvalidateCache(c.Context(), userID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -198,31 +209,45 @@ func (h *UserHandler) GetByDevicePrivate(c *fiber.Ctx) error {
 // GetByDevice godoc
 // GET /api/v1/users/by-device/:publicId
 //
-// Resolves a BLE device public_id into the user that owns it. Used by the
-// scanner: tap a found chip → call this → push the user's profile.
-// Always returns a slim UserShort, never the full profile (no follow status,
-// no counts) — to keep this endpoint simple and not tie scanner UI to viewer.
+// Резолвит BLE device public_id_hex в анонимный scan-профиль.
+// Возвращает ТОЛЬКО scan_alias + scan_avatar_url + device_hash.
+// Реальный аккаунт (username, avatar, id) НЕ возвращается.
+// scan_enabled=false → 404 (сервер-сайд privacy toggle).
 func (h *UserHandler) GetByDevice(c *fiber.Ctx) error {
 	publicID := c.Params("publicId")
 	if publicID == "" {
 		return respondError(c, fiber.StatusBadRequest, "publicId is required")
 	}
-	user, err := h.userService.GetByDevicePublicID(c.Context(), publicID)
+	profile, err := h.userService.GetScanProfileByDeviceHash(c.Context(), publicID)
 	if err != nil {
 		if err == domain.ErrUserNotFound {
 			return respondError(c, fiber.StatusNotFound, "no user with this device")
 		}
-		h.logger.Error("get user by device", zap.Error(err))
+		h.logger.Error("get scan profile by device", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to lookup")
 	}
-	return respondSuccess(c, fiber.StatusOK, fiber.Map{
-		"id":         user.ID,
-		"username":   user.Username,
-		"full_name":  user.FullName,
-		"avatar_url": user.AvatarURL,
-		"is_verified": user.IsVerified,
-		"is_private":  user.IsPrivate,
-	}, nil)
+	return respondSuccess(c, fiber.StatusOK, profile, nil)
+}
+
+// UpdateScanProfile godoc
+// PUT /api/v1/users/me/scan-profile
+//
+// Обновить анонимный образ пользователя в BLE-сканере:
+// scan_alias (псевдоним), scan_avatar_url, scan_enabled (toggle видимости).
+func (h *UserHandler) UpdateScanProfile(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	var req domain.UpdateScanProfileRequest
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if err := h.validate.Struct(&req); err != nil {
+		return respondValidationError(c, err)
+	}
+	if err := h.userService.UpdateScanProfile(c.Context(), userID, &req); err != nil {
+		h.logger.Error("update scan profile", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to update scan profile")
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // GetByUsername godoc

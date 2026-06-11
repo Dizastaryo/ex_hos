@@ -18,6 +18,14 @@ type Config struct {
 	WhatsApp  WhatsAppConfig
 	OTP       OTPConfig
 	R2        R2Config
+	Device    DeviceConfig
+}
+
+// DeviceConfig — параметры генерации BLE-устройств.
+// SEEU_DEVICE_SECRET — мастер-ключ для HMAC-SHA256 генерации public/private id.
+// В dev можно любую строку; в продакшне — минимум 32 случайных байта.
+type DeviceConfig struct {
+	Secret string `env:"SEEU_DEVICE_SECRET" env-default:"dev-device-secret-change-in-prod"`
 }
 
 type AppConfig struct {

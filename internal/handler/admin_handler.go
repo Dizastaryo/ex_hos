@@ -17,7 +17,9 @@ type AdminHandler struct {
 	reportRepo *postgres.ReportRepository
 	auditRepo  *postgres.AuditRepository
 	audioRepo  *postgres.AudioRepository
+	deviceRepo *postgres.DeviceRepository
 	userSvc    *service.UserService
+	deviceSvc  *service.DeviceService
 	logger     *zap.Logger
 }
 
@@ -26,7 +28,9 @@ func NewAdminHandler(
 	reportRepo *postgres.ReportRepository,
 	auditRepo *postgres.AuditRepository,
 	audioRepo *postgres.AudioRepository,
+	deviceRepo *postgres.DeviceRepository,
 	userSvc *service.UserService,
+	deviceSvc *service.DeviceService,
 	logger *zap.Logger,
 ) *AdminHandler {
 	return &AdminHandler{
@@ -34,7 +38,9 @@ func NewAdminHandler(
 		reportRepo: reportRepo,
 		auditRepo:  auditRepo,
 		audioRepo:  audioRepo,
+		deviceRepo: deviceRepo,
 		userSvc:    userSvc,
+		deviceSvc:  deviceSvc,
 		logger:     logger,
 	}
 }
@@ -271,6 +277,91 @@ func (h *AdminHandler) RejectAudioTrack(c *fiber.Ctx) error {
 		meta["reason"] = req.Reason
 	}
 	h.audit(c, "audio.reject", "audio_track", id, meta)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ── BLE Device management ─────────────────────────────────────────────────────
+
+// GenerateDevices godoc
+// POST /api/v1/admin/devices/generate
+// body: { count: 10, notes: "партия январь 2026" }
+//
+// Генерирует N BLE-устройств (браслетов). Возвращает список с serial_number,
+// public_id_hex и private_id_hex — последние два вшиваются в прошивку.
+// private_id_hex доступен ТОЛЬКО в этом ответе и в /admin/devices/export.csv.
+func (h *AdminHandler) GenerateDevices(c *fiber.Ctx) error {
+	var req domain.GenerateDevicesRequest
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if req.Count < 1 || req.Count > 500 {
+		return respondError(c, fiber.StatusBadRequest, "count must be between 1 and 500")
+	}
+	devices, err := h.deviceSvc.GenerateDevices(c.Context(), &req)
+	if err != nil {
+		h.logger.Error("admin generate devices", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to generate devices")
+	}
+	h.audit(c, "device.generate", "ble_device", "", fiber.Map{
+		"count": req.Count,
+		"notes": req.Notes,
+	})
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": devices}, nil)
+}
+
+// ListDevices godoc
+// GET /api/v1/admin/devices?q=SEEU&limit=50&offset=0
+//
+// Список BLE-устройств (без private_id_hex).
+func (h *AdminHandler) ListDevices(c *fiber.Ctx) error {
+	devices, err := h.deviceRepo.AdminList(c.Context(), postgres.AdminListDevicesFilter{
+		Query:  c.Query("q"),
+		Limit:  c.QueryInt("limit", 50),
+		Offset: c.QueryInt("offset", 0),
+	})
+	if err != nil {
+		h.logger.Error("admin list devices", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to list devices")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": devices}, nil)
+}
+
+// ExportDevicesCSV godoc
+// GET /api/v1/admin/devices/export.csv
+//
+// CSV со всеми активными устройствами: serial_number, public_id_hex, private_id_hex.
+// Используется скриптом прошивки браслетов. Только admin.
+func (h *AdminHandler) ExportDevicesCSV(c *fiber.Ctx) error {
+	rows, err := h.deviceRepo.AdminExport(c.Context())
+	if err != nil {
+		h.logger.Error("admin export devices", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to export")
+	}
+	c.Set("Content-Type", "text/csv; charset=utf-8")
+	c.Set("Content-Disposition", `attachment; filename="seeu-devices.csv"`)
+	// Шапка
+	csv := "serial_number,public_id_hex,private_id_hex\n"
+	for _, r := range rows {
+		csv += r.SerialNumber + "," + r.PublicIDHex + "," + r.PrivateIDHex + "\n"
+	}
+	return c.SendString(csv)
+}
+
+// DeactivateDevice godoc
+// DELETE /api/v1/admin/devices/:id
+//
+// Деактивирует устройство (is_active=false). Юзер с этим браслетом
+// перестанет резолвиться в сканере при следующем re-scan.
+func (h *AdminHandler) DeactivateDevice(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if err := h.deviceRepo.SetActive(c.Context(), id, false); err != nil {
+		if err == domain.ErrNotFound {
+			return respondError(c, fiber.StatusNotFound, "device not found")
+		}
+		h.logger.Error("deactivate device", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to deactivate")
+	}
+	h.audit(c, "device.deactivate", "ble_device", id, nil)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 

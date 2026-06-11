@@ -30,6 +30,12 @@ type User struct {
 	// = hero-баннер 16:9 поверх профиля. Если оба пусты — профиль обычный.
 	ChannelAbout     string `json:"channel_about" db:"channel_about"`
 	ChannelBannerURL string `json:"channel_banner_url" db:"channel_banner_url"`
+	// Scan-профиль: анонимная личность в BLE-сканере.
+	// Сканирующий видит scan_alias + scan_avatar_url, реальный аккаунт скрыт.
+	// scan_enabled=false → /by-device отдаёт 404 (сервер-сайд privacy toggle).
+	ScanAlias     string `json:"scan_alias" db:"scan_alias"`
+	ScanAvatarURL string `json:"scan_avatar_url" db:"scan_avatar_url"`
+	ScanEnabled   bool   `json:"scan_enabled" db:"scan_enabled"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 

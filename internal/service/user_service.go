@@ -14,29 +14,32 @@ import (
 )
 
 type UserService struct {
-	userRepo   *postgres.UserRepository
-	followRepo *postgres.FollowRepository
-	frRepo     *postgres.FollowRequestRepository
-	wsHub      *ws.Hub
-	cache      *redisRepo.Cache
-	logger     *zap.Logger
+	userRepo    *postgres.UserRepository
+	followRepo  *postgres.FollowRepository
+	frRepo      *postgres.FollowRequestRepository
+	scannerRepo *postgres.ScannerRepository
+	wsHub       *ws.Hub
+	cache       *redisRepo.Cache
+	logger      *zap.Logger
 }
 
 func NewUserService(
 	userRepo *postgres.UserRepository,
 	followRepo *postgres.FollowRepository,
 	frRepo *postgres.FollowRequestRepository,
+	scannerRepo *postgres.ScannerRepository,
 	wsHub *ws.Hub,
 	cache *redisRepo.Cache,
 	logger *zap.Logger,
 ) *UserService {
 	return &UserService{
-		userRepo:   userRepo,
-		followRepo: followRepo,
-		frRepo:     frRepo,
-		wsHub:      wsHub,
-		cache:      cache,
-		logger:     logger,
+		userRepo:    userRepo,
+		followRepo:  followRepo,
+		frRepo:      frRepo,
+		scannerRepo: scannerRepo,
+		wsHub:       wsHub,
+		cache:       cache,
+		logger:      logger,
 	}
 }
 
@@ -60,11 +63,11 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*domain.User, err
 	return u, nil
 }
 
-// BindDevice пишет device_public_id юзеру (или очищает если строка пустая).
-// Кэш юзера инвалидируется чтобы свежий профиль пришёл при следующем GET.
+// BindDevice очищает device_public_id/private_id (используется при UnbindMyDevice).
+// Для привязки по серийнику используй DeviceService.BindDeviceToUser.
 func (s *UserService) BindDevice(ctx context.Context, userID, publicID string) error {
 	user, _ := s.userRepo.GetByID(ctx, userID)
-	if err := s.userRepo.SetDevicePublicID(ctx, userID, publicID); err != nil {
+	if err := s.userRepo.SetDeviceIDs(ctx, userID, publicID, ""); err != nil {
 		return err
 	}
 	if user != nil {
@@ -73,10 +76,37 @@ func (s *UserService) BindDevice(ctx context.Context, userID, publicID string) e
 	return nil
 }
 
+// GetScanProfileByDeviceHash резолвит public_id_hex → scan-профиль.
+// scan_enabled=false → ErrUserNotFound (сервер-сайд toggle).
+// Возвращает только поля для анонимного scan-профиля.
+func (s *UserService) GetScanProfileByDeviceHash(ctx context.Context, publicIDHex string) (*domain.ScanProfile, error) {
+	user, err := s.userRepo.GetByDevicePublicID(ctx, publicIDHex)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.ScanProfile{
+		ScanAlias:     user.ScanAlias,
+		ScanAvatarURL: user.ScanAvatarURL,
+		DeviceHash:    user.DevicePublicID,
+	}, nil
+}
+
 // GetByDevicePublicID returns the bare user record by BLE device public_id.
-// Used by scanner — no viewer-aware fields, no caching needed for now.
+// Deprecated: используй GetScanProfileByDeviceHash для scanner UI.
 func (s *UserService) GetByDevicePublicID(ctx context.Context, publicID string) (*domain.User, error) {
 	return s.userRepo.GetByDevicePublicID(ctx, publicID)
+}
+
+// UpdateScanProfile обновляет scan-профиль (псевдоним, аватар, toggle видимости).
+func (s *UserService) UpdateScanProfile(ctx context.Context, userID string, req *domain.UpdateScanProfileRequest) error {
+	user, _ := s.userRepo.GetByID(ctx, userID)
+	if err := s.scannerRepo.UpdateScanProfile(ctx, userID, req); err != nil {
+		return err
+	}
+	if user != nil {
+		s.invalidateUserCache(ctx, userID, user.Username)
+	}
+	return nil
 }
 
 // GetByDevicePrivateIDForViewer (BUG-17) — резолвит приватный BLE-id чипа,
@@ -274,6 +304,17 @@ func (s *UserService) checkPrivacy(ctx context.Context, user *domain.User, viewe
 
 func (s *UserService) invalidateUserCache(ctx context.Context, userID, username string) {
 	s.cache.InvalidateUser(ctx, userID, username)
+}
+
+// InvalidateCache — публичный метод для инвалидации кэша из хэндлера
+// (например после привязки браслета через DeviceService).
+func (s *UserService) InvalidateCache(ctx context.Context, userID string) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	s.invalidateUserCache(ctx, userID, user.Username)
+	return nil
 }
 
 func toPublicProfile(u *domain.User) *domain.UserPublicProfile {

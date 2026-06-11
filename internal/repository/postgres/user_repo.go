@@ -196,6 +196,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE id = $1`
 
@@ -209,6 +210,7 @@ func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE phone = $1`
 
@@ -222,6 +224,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*d
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE username = $1`
 
@@ -241,24 +244,34 @@ func (r *UserRepository) SetLastSeen(ctx context.Context, userID string) error {
 // SetDevicePublicID атомарно привязывает BLE-метку к юзеру. Если другой
 // юзер уже владеет этим device_public_id — вернёт ErrAlreadyExists. Пустая
 // строка отвязывает текущий чип.
+// Deprecated: используй SetDeviceIDs (принимает оба id сразу).
 func (r *UserRepository) SetDevicePublicID(ctx context.Context, userID, publicID string) error {
-	if publicID == "" {
+	return r.SetDeviceIDs(ctx, userID, publicID, "")
+}
+
+// SetDeviceIDs атомарно записывает device_public_id + device_private_id юзеру.
+// Пустые строки — очищают соответствующее поле (отвязка браслета).
+// Если другой юзер уже использует тот же publicIDHex — ErrAlreadyExists.
+func (r *UserRepository) SetDeviceIDs(ctx context.Context, userID, publicIDHex, privateIDHex string) error {
+	if publicIDHex == "" {
 		_, err := r.db.Pool.Exec(ctx,
-			`UPDATE users SET device_public_id = '' WHERE id = $1`, userID)
-		if err != nil {
-			return fmt.Errorf("clear device: %w", err)
-		}
-		return nil
+			`UPDATE users SET device_public_id = '', device_private_id = '' WHERE id = $1`,
+			userID,
+		)
+		return err
 	}
 	tag, err := r.db.Pool.Exec(ctx, `
-		UPDATE users SET device_public_id = $2
+		UPDATE users
+		SET device_public_id = $2, device_private_id = $3
 		WHERE id = $1
 		  AND NOT EXISTS (
 		      SELECT 1 FROM users
 		      WHERE device_public_id = $2 AND id <> $1
-		  )`, userID, publicID)
+		  )`,
+		userID, publicIDHex, privateIDHex,
+	)
 	if err != nil {
-		return fmt.Errorf("set device: %w", err)
+		return fmt.Errorf("set device ids: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrAlreadyExists
@@ -312,8 +325,9 @@ func (r *UserRepository) GetByDevicePrivateIDAmongUsers(
 	return user, nil
 }
 
-// GetByDevicePublicID resolves a BLE device's public_id (e.g. "DEVICE_A001")
-// into a user. Used by the scanner UI to turn a discovered chip into a profile.
+// GetByDevicePublicID резолвит BLE device public_id_hex в scan-профиль юзера.
+// scan_enabled = false → ErrUserNotFound (сервер-сайд privacy toggle).
+// Возвращает полный User; caller берёт только scan_alias/scan_avatar_url/device_public_id.
 func (r *UserRepository) GetByDevicePublicID(ctx context.Context, publicID string) (*domain.User, error) {
 	query := `
 		SELECT id, username, phone, full_name, bio, avatar_url, website,
@@ -321,8 +335,12 @@ func (r *UserRepository) GetByDevicePublicID(ctx context.Context, publicID strin
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
-		FROM users WHERE device_public_id = $1 AND device_public_id <> ''`
+		FROM users
+		WHERE device_public_id = $1
+		  AND device_public_id <> ''
+		  AND scan_enabled = TRUE`
 	return r.scanUser(ctx, query, publicID)
 }
 
@@ -336,6 +354,7 @@ func (r *UserRepository) scanUser(ctx context.Context, query string, arg interfa
 		&user.FollowersCount, &user.FollowingCount,
 		&user.LastSeenAt, &user.HideLastSeen,
 		&user.ChannelAbout, &user.ChannelBannerURL,
+		&user.ScanAlias, &user.ScanAvatarURL, &user.ScanEnabled,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
