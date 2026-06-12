@@ -119,3 +119,13 @@ type UserShort struct {
 	AvatarURL  string `json:"avatar_url"`
 	IsVerified bool   `json:"is_verified"`
 }
+
+// LeaderboardEntry — строка глобального топа по total_likes.
+type LeaderboardEntry struct {
+	Rank       int    `json:"rank"`
+	UserID     string `json:"user_id"`
+	Username   string `json:"username"`
+	FullName   string `json:"full_name"`
+	AvatarURL  string `json:"avatar_url"`
+	TotalLikes int    `json:"total_likes"`
+}

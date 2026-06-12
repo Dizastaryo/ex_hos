@@ -80,6 +80,37 @@ func (r *UserStatsRepository) IncrementLikes(ctx context.Context, userID, field 
 	return nil
 }
 
+// TopUsers возвращает топ-N пользователей по total_likes для leaderboard.
+func (r *UserStatsRepository) TopUsers(ctx context.Context, limit int) ([]*domain.LeaderboardEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT ROW_NUMBER() OVER (ORDER BY s.total_likes DESC) AS rank,
+		       u.id, u.username, COALESCE(u.full_name,''), COALESCE(u.avatar_url,''),
+		       s.total_likes
+		FROM user_stats s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.total_likes > 0
+		ORDER BY s.total_likes DESC
+		LIMIT $1`,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("top users: %w", err)
+	}
+	defer rows.Close()
+	var out []*domain.LeaderboardEntry
+	for rows.Next() {
+		e := &domain.LeaderboardEntry{}
+		if err := rows.Scan(&e.Rank, &e.UserID, &e.Username, &e.FullName, &e.AvatarURL, &e.TotalLikes); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // DecrementLikes атомарно уменьшает счётчик + total_likes, не уходя в минус.
 func (r *UserStatsRepository) DecrementLikes(ctx context.Context, userID, field string) error {
 	allowed := map[string]bool{

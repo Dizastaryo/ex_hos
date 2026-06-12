@@ -5,6 +5,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/middleware"
+	"github.com/seeu/backend/internal/repository/postgres"
 	"github.com/seeu/backend/internal/service"
 	"github.com/seeu/backend/pkg/pagination"
 	"go.uber.org/zap"
@@ -16,6 +17,7 @@ type UserHandler struct {
 	followService *service.FollowService
 	exportService *service.ExportService
 	deviceService *service.DeviceService
+	statsRepo     *postgres.UserStatsRepository
 	validate      *validator.Validate
 	logger        *zap.Logger
 }
@@ -26,6 +28,7 @@ func NewUserHandler(
 	followService *service.FollowService,
 	exportService *service.ExportService,
 	deviceService *service.DeviceService,
+	statsRepo *postgres.UserStatsRepository,
 	validate *validator.Validate,
 	logger *zap.Logger,
 ) *UserHandler {
@@ -35,6 +38,7 @@ func NewUserHandler(
 		followService: followService,
 		exportService: exportService,
 		deviceService: deviceService,
+		statsRepo:     statsRepo,
 		validate:      validate,
 		logger:        logger,
 	}
@@ -229,6 +233,44 @@ func (h *UserHandler) GetByDevice(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, profile, nil)
 }
 
+// GetPrivateWhitelist godoc
+// GET /api/v1/users/me/private-whitelist
+//
+// Список пользователей которые видят тебя в private BLE-режиме.
+// Только взаимные подписчики могут попасть в whitelist.
+func (h *UserHandler) GetPrivateWhitelist(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	entries, err := h.deviceService.GetPrivateWhitelist(c.Context(), userID)
+	if err != nil {
+		h.logger.Error("get private whitelist", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get whitelist")
+	}
+	if entries == nil {
+		entries = []*domain.PrivateWhitelistEntry{}
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": entries}, nil)
+}
+
+// SetPrivateWhitelist godoc
+// PUT /api/v1/users/me/private-whitelist
+// body: { "user_ids": ["uuid1", "uuid2"] }
+//
+// Заменяет whitelist — кто видит тебя в private BLE-режиме (mode=0x01).
+// Не-взаимные подписчики из списка молча отбрасываются.
+// Пустой массив [] = никто не видит.
+func (h *UserHandler) SetPrivateWhitelist(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	var req domain.SetPrivateWhitelistRequest
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if err := h.deviceService.SetPrivateWhitelist(c.Context(), userID, req.UserIDs); err != nil {
+		h.logger.Error("set private whitelist", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to set whitelist")
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // UpdateScanProfile godoc
 // PUT /api/v1/users/me/scan-profile
 //
@@ -370,4 +412,21 @@ func (h *UserHandler) GetFollowing(c *fiber.Ctx) error {
 
 	meta := pagination.NewMeta(page, limit, len(following))
 	return respondSuccess(c, fiber.StatusOK, following, meta)
+}
+
+// GET /api/v1/leaderboard?limit=50
+func (h *UserHandler) Leaderboard(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 50)
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
+	entries, err := h.statsRepo.TopUsers(c.Context(), limit)
+	if err != nil {
+		h.logger.Error("leaderboard", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get leaderboard")
+	}
+	if entries == nil {
+		entries = []*domain.LeaderboardEntry{}
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": entries}, nil)
 }

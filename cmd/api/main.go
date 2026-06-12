@@ -248,7 +248,7 @@ func main() {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, validate, logger)
-	userHandler := handler.NewUserHandler(userService, postService, followService, exportService, deviceService, validate, logger)
+	userHandler := handler.NewUserHandler(userService, postService, followService, exportService, deviceService, userStatsRepo, validate, logger)
 	postHandler := handler.NewPostHandler(postService, validate, logger)
 	storyHandler := handler.NewStoryHandler(storyService, validate, logger)
 	commentHandler := handler.NewCommentHandler(commentService, validate, logger)
@@ -525,6 +525,9 @@ func main() {
 
 	// Trending tags
 	api.Get("/tags/trending", middleware.OptionalAuth(jwtManager), audioHandler.GetTrendingTags)
+
+	// Leaderboard — топ пользователей по social score
+	api.Get("/leaderboard", middleware.OptionalAuth(jwtManager), userHandler.Leaderboard)
 
 	// Сборы
 	sbory := api.Group("/sbory", middleware.Auth(jwtManager, sessionStore, userRepo))
