@@ -32,6 +32,7 @@ type File struct {
 	LikesCount     int       `json:"likes_count"`
 	IsPreviewable  bool      `json:"is_previewable"`
 	PreviewURL     string    `json:"preview_url"`
+	CoverURL       string    `json:"cover_url"`
 	Description    string    `json:"description"`
 	PagesCount     int       `json:"pages_count"`
 	DocFormat      string    `json:"doc_format"`

@@ -53,18 +53,18 @@ func (r *FileRepository) Create(ctx context.Context, f *domain.File) error {
 		INSERT INTO files (
 			user_id, filename, title, author_name, language,
 			file_url, mime_type, file_size, category_id,
-			is_previewable, description, pages_count, doc_format, extracted_text
+			is_previewable, description, pages_count, doc_format, extracted_text, cover_url
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, NULLIF($9, '')::uuid,
-			$10, $11, $12, $13, NULLIF($14, '')
+			$10, $11, $12, $13, NULLIF($14, ''), $15
 		)
 		RETURNING id, downloads_count, created_at`
 
 	return r.db.Pool.QueryRow(ctx, query,
 		f.UserID, f.Filename, f.Title, f.AuthorName, f.Language,
 		f.FileURL, f.MimeType, f.FileSize, f.CategoryID,
-		previewable, f.Description, f.PagesCount, f.DocFormat, f.ExtractedText,
+		previewable, f.Description, f.PagesCount, f.DocFormat, f.ExtractedText, f.CoverURL,
 	).Scan(&f.ID, &f.DownloadsCount, &f.CreatedAt)
 }
 
@@ -74,7 +74,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
@@ -88,7 +88,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		&file.Title, &file.AuthorName, &file.Language,
 		&file.FileURL, &file.MimeType, &file.FileSize,
 		&file.CategoryID, &file.DownloadsCount, &file.LikesCount, &file.IsPreviewable,
-		&file.PreviewURL, &file.Description,
+		&file.PreviewURL, &file.CoverURL, &file.Description,
 		&file.PagesCount, &file.DocFormat,
 		&file.CreatedAt,
 		&file.User.ID, &file.User.Username, &file.User.FullName,
@@ -141,7 +141,7 @@ func (r *FileRepository) Trending(ctx context.Context, limit int, period string)
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
@@ -167,7 +167,7 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
@@ -265,7 +265,7 @@ func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
@@ -401,7 +401,7 @@ func scanFiles(rows interface {
 			&f.Title, &f.AuthorName, &f.Language,
 			&f.FileURL, &f.MimeType, &f.FileSize,
 			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
-			&f.PreviewURL, &f.Description,
+			&f.PreviewURL, &f.CoverURL, &f.Description,
 			&f.PagesCount, &f.DocFormat,
 			&f.CreatedAt,
 			&f.User.ID, &f.User.Username, &f.User.FullName,

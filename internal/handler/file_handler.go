@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"mime/multipart"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
@@ -50,7 +51,18 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 	authorName := c.FormValue("author_name")
 	language := c.FormValue("language")
 
-	file, err := h.fileService.Upload(c.Context(), userID, src, header, categoryID, description, title, authorName, language)
+	// Обложка — опциональна
+	var coverFile multipart.File
+	var coverHeader *multipart.FileHeader
+	if ch, cerr := c.FormFile("cover"); cerr == nil {
+		if cf, cerr := ch.Open(); cerr == nil {
+			coverFile = cf
+			coverHeader = ch
+			defer cf.Close()
+		}
+	}
+
+	file, err := h.fileService.Upload(c.Context(), userID, src, header, coverFile, coverHeader, categoryID, description, title, authorName, language)
 	if err != nil {
 		h.logger.Error("upload file", zap.Error(err))
 		return respondError(c, fiber.StatusBadRequest, err.Error())

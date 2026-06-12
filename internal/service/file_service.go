@@ -69,17 +69,76 @@ func NewFileService(fileRepo *postgres.FileRepository, statsRepo *postgres.UserS
 	return &FileService{fileRepo: fileRepo, statsRepo: statsRepo, logger: logger, r2: r2}
 }
 
+// allowedCoverMimes — MIME-типы разрешённые для обложки (изображения).
+var allowedCoverMimes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/webp": true,
+}
+
+// MaxCoverSize — 5 MB максимум для обложки.
+const MaxCoverSize = 5 * 1024 * 1024
+
+// uploadCover uploads cover image to R2 and returns public URL.
+// Returns ("", nil) when cover is nil (optional).
+func (s *FileService) uploadCover(ctx context.Context, cover multipart.File, coverHeader *multipart.FileHeader) (string, error) {
+	if cover == nil || coverHeader == nil {
+		return "", nil
+	}
+	if coverHeader.Size > MaxCoverSize {
+		return "", fmt.Errorf("cover size exceeds 5 MB")
+	}
+	mime := coverHeader.Header.Get("Content-Type")
+	if !allowedCoverMimes[mime] {
+		// fallback: detect by extension
+		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(coverHeader.Filename), "."))
+		switch ext {
+		case "jpg", "jpeg":
+			mime = "image/jpeg"
+		case "png":
+			mime = "image/png"
+		case "webp":
+			mime = "image/webp"
+		default:
+			return "", fmt.Errorf("cover must be JPEG, PNG or WebP")
+		}
+	}
+	data, err := io.ReadAll(cover)
+	if err != nil {
+		return "", fmt.Errorf("read cover: %w", err)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	ext := "jpg"
+	if mime == "image/png" {
+		ext = "png"
+	} else if mime == "image/webp" {
+		ext = "webp"
+	}
+	key := "uploads/library/covers/" + hash[:16] + "." + ext
+	if s.r2 != nil {
+		return s.r2.Upload(ctx, key, data, mime)
+	}
+	// local fallback
+	dirPath := filepath.Join(libraryUploadDir, "covers")
+	_ = os.MkdirAll(dirPath, 0o755)
+	_ = os.WriteFile(filepath.Join(dirPath, hash[:16]+"."+ext), data, 0o644)
+	return "/uploads/library/covers/" + hash[:16] + "." + ext, nil
+}
+
 // Upload saves a multipart file blob to disk under /uploads/library/<date>/
 // and inserts the metadata row in `files`. Returns the persisted File.
 //
 // Only allowed: pdf, epub, fb2, docx, pptx, txt, rtf, md, odt, odp.
 // На upload автоматически извлекается текст (для Tier-2 форматов) и
 // подсчитываются страницы (для PDF).
+// cover/coverHeader — опциональная обложка (JPEG/PNG/WebP, max 5 MB).
 func (s *FileService) Upload(
 	ctx context.Context,
 	userID string,
 	file multipart.File,
 	header *multipart.FileHeader,
+	cover multipart.File,
+	coverHeader *multipart.FileHeader,
 	categoryID, description, title, authorName, language string,
 ) (*domain.File, error) {
 	if header.Size <= 0 {
@@ -152,6 +211,13 @@ func (s *FileService) Upload(
 		pagesCount = docextract.CountPDFPages(bytes)
 	}
 
+	// Опциональная обложка
+	coverURL, err := s.uploadCover(ctx, cover, coverHeader)
+	if err != nil {
+		s.logger.Warn("upload cover (non-fatal)", zap.Error(err))
+		coverURL = ""
+	}
+
 	entity := &domain.File{
 		UserID:        userID,
 		Filename:      header.Filename,
@@ -166,6 +232,7 @@ func (s *FileService) Upload(
 		PagesCount:    pagesCount,
 		DocFormat:     ext,
 		ExtractedText: extractedText,
+		CoverURL:      coverURL,
 	}
 	if err := s.fileRepo.Create(ctx, entity); err != nil {
 		return nil, err
