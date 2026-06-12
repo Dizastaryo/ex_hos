@@ -27,16 +27,17 @@ const MaxLibraryFileSize = 50 * 1024 * 1024 // 50 MB
 const libraryUploadDir = "./uploads/library"
 
 type FileService struct {
-	fileRepo *postgres.FileRepository
-	logger   *zap.Logger
-	r2       *storage.R2
+	fileRepo  *postgres.FileRepository
+	statsRepo *postgres.UserStatsRepository
+	logger    *zap.Logger
+	r2        *storage.R2
 }
 
-func NewFileService(fileRepo *postgres.FileRepository, logger *zap.Logger, r2 *storage.R2) *FileService {
+func NewFileService(fileRepo *postgres.FileRepository, statsRepo *postgres.UserStatsRepository, logger *zap.Logger, r2 *storage.R2) *FileService {
 	if r2 == nil {
 		os.MkdirAll(libraryUploadDir, 0o755)
 	}
-	return &FileService{fileRepo: fileRepo, logger: logger, r2: r2}
+	return &FileService{fileRepo: fileRepo, statsRepo: statsRepo, logger: logger, r2: r2}
 }
 
 // Upload saves a multipart file blob to disk under /uploads/library/<date>/
@@ -151,8 +152,26 @@ func (s *FileService) DeleteFile(ctx context.Context, id, userID string) error {
 }
 
 func (s *FileService) LikeFile(ctx context.Context, fileID, userID string) error {
-	_, err := s.fileRepo.LikeFile(ctx, fileID, userID)
-	return err
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+	isNew, err := s.fileRepo.LikeFile(ctx, fileID, userID)
+	if err != nil {
+		return err
+	}
+	// Social score: не считаем лайки себе, и только новые лайки
+	if isNew && file.UserID != userID {
+		// audio/* → audio_likes; остальное (pdf, книги) → book_likes
+		statsField := "book_likes"
+		if len(file.MimeType) >= 5 && file.MimeType[:5] == "audio" {
+			statsField = "audio_likes"
+		}
+		if err := s.statsRepo.IncrementLikes(ctx, file.UserID, statsField); err != nil {
+			s.logger.Warn("increment file likes", zap.Error(err))
+		}
+	}
+	return nil
 }
 
 func (s *FileService) UnlikeFile(ctx context.Context, fileID, userID string) error {

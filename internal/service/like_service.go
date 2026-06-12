@@ -17,6 +17,7 @@ type LikeService struct {
 	commentRepo *postgres.CommentRepository
 	storyRepo   *postgres.StoryRepository
 	notifRepo   *postgres.NotificationRepository
+	statsRepo   *postgres.UserStatsRepository
 	cache       *redisRepo.Cache
 	wsHub       *ws.Hub
 	logger      *zap.Logger
@@ -28,6 +29,7 @@ func NewLikeService(
 	commentRepo *postgres.CommentRepository,
 	storyRepo *postgres.StoryRepository,
 	notifRepo *postgres.NotificationRepository,
+	statsRepo *postgres.UserStatsRepository,
 	cache *redisRepo.Cache,
 	wsHub *ws.Hub,
 	logger *zap.Logger,
@@ -38,6 +40,7 @@ func NewLikeService(
 		commentRepo: commentRepo,
 		storyRepo:   storyRepo,
 		notifRepo:   notifRepo,
+		statsRepo:   statsRepo,
 		cache:       cache,
 		wsHub:       wsHub,
 		logger:      logger,
@@ -54,6 +57,13 @@ func (s *LikeService) LikePost(ctx context.Context, postID, userID string) error
 	// был, а счётчик не обновлялся.
 	if err := s.likeRepo.LikeEntityAtomic(ctx, userID, postID, domain.LikeEntityPost, "posts"); err != nil {
 		return err
+	}
+
+	// Social score: увеличиваем post_likes владельца.
+	if post.UserID != userID {
+		if err := s.statsRepo.IncrementLikes(ctx, post.UserID, "post_likes"); err != nil {
+			s.logger.Warn("increment post_likes", zap.Error(err))
+		}
 	}
 
 	if post.UserID != userID {
@@ -135,6 +145,13 @@ func (s *LikeService) LikeStory(ctx context.Context, storyID, userID string) err
 
 	if err := s.storyRepo.IncrementLikesCount(ctx, storyID, 1); err != nil {
 		s.logger.Warn("increment story likes count", zap.Error(err))
+	}
+
+	// Social score: увеличиваем story_likes владельца.
+	if story.UserID != userID {
+		if err := s.statsRepo.IncrementLikes(ctx, story.UserID, "story_likes"); err != nil {
+			s.logger.Warn("increment story_likes", zap.Error(err))
+		}
 	}
 
 	if story.UserID != userID {

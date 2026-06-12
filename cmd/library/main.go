@@ -84,6 +84,7 @@ func main() {
 	// Repositories
 	userRepo := postgres.NewUserRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
+	userStatsRepo := postgres.NewUserStatsRepository(db)
 
 	// R2 cloud storage
 	var r2Client *storage.R2
@@ -99,7 +100,7 @@ func main() {
 	}
 
 	// Services
-	fileService := service.NewFileService(fileRepo, logger, r2Client)
+	fileService := service.NewFileService(fileRepo, userStatsRepo, logger, r2Client)
 
 	// Handlers
 	fileHandler := handler.NewFileHandler(fileService, validate, logger)

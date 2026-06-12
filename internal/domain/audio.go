@@ -19,7 +19,10 @@ type AudioTrack struct {
 	RejectionReason  string `json:"rejection_reason,omitempty" db:"rejection_reason"`
 	// MUSIC-2: LRC-формат lyrics («[mm:ss.xx]Line»). nil/empty = без lyrics.
 	// Frontend парсит и рендерит sing-along scroller.
-	LyricsLRC        string `json:"lyrics_lrc,omitempty" db:"lyrics_lrc"`
+	LyricsLRC  string `json:"lyrics_lrc,omitempty" db:"lyrics_lrc"`
+	LikesCount int    `json:"likes_count" db:"likes_count"`
+	// IsLiked — заполняется handler'ом для авторизованного viewer'а.
+	IsLiked bool `json:"is_liked,omitempty"`
 }
 
 type TrendingTag struct {

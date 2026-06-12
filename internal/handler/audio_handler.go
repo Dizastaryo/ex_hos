@@ -85,11 +85,12 @@ func extractEmbeddedCover(audioURL string, logger *zap.Logger) string {
 
 type AudioHandler struct {
 	audioRepo *postgres.AudioRepository
+	statsRepo *postgres.UserStatsRepository
 	logger    *zap.Logger
 }
 
-func NewAudioHandler(audioRepo *postgres.AudioRepository, logger *zap.Logger) *AudioHandler {
-	return &AudioHandler{audioRepo: audioRepo, logger: logger}
+func NewAudioHandler(audioRepo *postgres.AudioRepository, statsRepo *postgres.UserStatsRepository, logger *zap.Logger) *AudioHandler {
+	return &AudioHandler{audioRepo: audioRepo, statsRepo: statsRepo, logger: logger}
 }
 
 // GET /api/v1/audio-tracks?q=&page=1&limit=20
@@ -364,6 +365,53 @@ func (h *AudioHandler) AdminList(c *fiber.Ctx) error {
 		tracks = []*domain.AudioTrack{}
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": tracks}, nil)
+}
+
+// POST /api/v1/audio-tracks/:id/like
+func (h *AudioHandler) LikeTrack(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		return respondError(c, fiber.StatusUnauthorized, "auth required")
+	}
+	trackID := c.Params("id")
+	track, err := h.audioRepo.GetByID(c.Context(), trackID)
+	if err != nil {
+		return respondError(c, fiber.StatusNotFound, "track not found")
+	}
+	isNew, err := h.audioRepo.LikeTrack(c.Context(), trackID, userID)
+	if err != nil {
+		h.logger.Error("like track", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to like track")
+	}
+	if isNew && track.UserID != "" && track.UserID != userID {
+		if sErr := h.statsRepo.IncrementLikes(c.Context(), track.UserID, "audio_likes"); sErr != nil {
+			h.logger.Warn("increment audio_likes", zap.Error(sErr))
+		}
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"liked": true}, nil)
+}
+
+// DELETE /api/v1/audio-tracks/:id/like
+func (h *AudioHandler) UnlikeTrack(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		return respondError(c, fiber.StatusUnauthorized, "auth required")
+	}
+	trackID := c.Params("id")
+	track, err := h.audioRepo.GetByID(c.Context(), trackID)
+	if err != nil {
+		return respondError(c, fiber.StatusNotFound, "track not found")
+	}
+	if err := h.audioRepo.UnlikeTrack(c.Context(), trackID, userID); err != nil {
+		h.logger.Error("unlike track", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to unlike track")
+	}
+	if track.UserID != "" && track.UserID != userID {
+		if sErr := h.statsRepo.DecrementLikes(c.Context(), track.UserID, "audio_likes"); sErr != nil {
+			h.logger.Warn("decrement audio_likes", zap.Error(sErr))
+		}
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"liked": false}, nil)
 }
 
 // AdminApprove / AdminReject are wired through the AdminHandler so they can

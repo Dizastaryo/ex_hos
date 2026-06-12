@@ -10,11 +10,12 @@ import (
 
 type VideoService struct {
 	videoRepo *postgres.VideoRepository
+	statsRepo *postgres.UserStatsRepository
 	logger    *zap.Logger
 }
 
-func NewVideoService(videoRepo *postgres.VideoRepository, logger *zap.Logger) *VideoService {
-	return &VideoService{videoRepo: videoRepo, logger: logger}
+func NewVideoService(videoRepo *postgres.VideoRepository, statsRepo *postgres.UserStatsRepository, logger *zap.Logger) *VideoService {
+	return &VideoService{videoRepo: videoRepo, statsRepo: statsRepo, logger: logger}
 }
 
 func (s *VideoService) CreateVideo(ctx context.Context, userID string, req *domain.CreateVideoRequest) (*domain.Video, error) {
@@ -69,7 +70,20 @@ func (s *VideoService) ViewVideo(ctx context.Context, videoID, userID string) er
 }
 
 func (s *VideoService) LikeVideo(ctx context.Context, videoID, userID string) error {
-	return s.videoRepo.LikeVideo(ctx, videoID, userID)
+	video, err := s.videoRepo.GetVideoByID(ctx, videoID)
+	if err != nil {
+		return err
+	}
+	if err := s.videoRepo.LikeVideo(ctx, videoID, userID); err != nil {
+		return err
+	}
+	// Social score: не считаем лайки себе
+	if video.UserID != userID {
+		if err := s.statsRepo.IncrementLikes(ctx, video.UserID, "video_likes"); err != nil {
+			s.logger.Warn("increment video_likes", zap.Error(err))
+		}
+	}
+	return nil
 }
 
 func (s *VideoService) UnlikeVideo(ctx context.Context, videoID, userID string) error {

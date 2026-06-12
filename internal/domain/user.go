@@ -107,7 +107,9 @@ type UserPublicProfile struct {
 	// иначе — channel-mode с banner + about поверх profile-header.
 	ChannelAbout     string `json:"channel_about"`
 	ChannelBannerURL string `json:"channel_banner_url"`
-	CreatedAt       time.Time `json:"created_at"`
+	// TotalLikes — суммарный социальный счёт из user_stats.
+	TotalLikes int `json:"total_likes"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type UserShort struct {

@@ -18,6 +18,7 @@ type UserService struct {
 	followRepo  *postgres.FollowRepository
 	frRepo      *postgres.FollowRequestRepository
 	scannerRepo *postgres.ScannerRepository
+	statsRepo   *postgres.UserStatsRepository
 	wsHub       *ws.Hub
 	cache       *redisRepo.Cache
 	logger      *zap.Logger
@@ -28,6 +29,7 @@ func NewUserService(
 	followRepo *postgres.FollowRepository,
 	frRepo *postgres.FollowRequestRepository,
 	scannerRepo *postgres.ScannerRepository,
+	statsRepo *postgres.UserStatsRepository,
 	wsHub *ws.Hub,
 	cache *redisRepo.Cache,
 	logger *zap.Logger,
@@ -37,6 +39,7 @@ func NewUserService(
 		followRepo:  followRepo,
 		frRepo:      frRepo,
 		scannerRepo: scannerRepo,
+		statsRepo:   statsRepo,
 		wsHub:       wsHub,
 		cache:       cache,
 		logger:      logger,
@@ -109,12 +112,12 @@ func (s *UserService) UpdateScanProfile(ctx context.Context, userID string, req 
 	return nil
 }
 
-// GetByDevicePrivateIDForViewer (BUG-17) — резолвит приватный BLE-id чипа,
-// но ТОЛЬКО среди follow'ed юзеров viewer'а (privacy guard от brute-force).
-// Используется scanner'ом для mode=0x01 (private) packets.
+// GetByDevicePrivateIDForViewer резолвит приватный BLE-id чипа.
+// Новая логика: видит тот, кого ВЛАДЕЛЕЦ браслета добавил в свой private-whitelist.
+// Раньше была проверка follow'ed viewer'а — заменена на явный whitelist от владельца.
 //
-// Если viewerID empty → ErrUnauthorized (приватный поиск без auth запрещён).
-// Если ни один из follow'ed не имеет такой private_id → ErrUserNotFound.
+// Если viewerID empty → ErrUnauthorized.
+// Если viewerID не в whitelist владельца → ErrUserNotFound (не раскрываем факт существования).
 func (s *UserService) GetByDevicePrivateIDForViewer(
 	ctx context.Context, viewerID, privateID string,
 ) (*domain.User, error) {
@@ -124,15 +127,15 @@ func (s *UserService) GetByDevicePrivateIDForViewer(
 	if privateID == "" {
 		return nil, domain.ErrUserNotFound
 	}
-	// Whitelist = follow'ed by viewer. Без этого ограничения юзер мог бы
-	// brute-force'ить любой privateID без знания target'а.
-	following, err := s.followRepo.GetFollowingIDs(ctx, viewerID)
+	// Используем scanner_repo: один SQL с проверкой whitelist внутри
+	userID, err := s.scannerRepo.GetUserByPrivateDeviceHash(ctx, privateID, viewerID)
 	if err != nil {
-		return nil, fmt.Errorf("get following ids: %w", err)
+		if err == domain.ErrNotFound {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("resolve private device: %w", err)
 	}
-	// Сам viewer — тоже candidate (свой собственный приватный чип в private-mode).
-	allowed := append(following, viewerID)
-	return s.userRepo.GetByDevicePrivateIDAmongUsers(ctx, privateID, allowed)
+	return s.userRepo.GetByID(ctx, userID)
 }
 
 func (s *UserService) GetByUsername(ctx context.Context, username, viewerID string) (*domain.UserPublicProfile, error) {
@@ -142,6 +145,12 @@ func (s *UserService) GetByUsername(ctx context.Context, username, viewerID stri
 	}
 
 	profile := toPublicProfile(user)
+
+	// Social score: подгружаем total_likes из user_stats.
+	if stats, err := s.statsRepo.GetByUserID(ctx, user.ID); err == nil {
+		profile.TotalLikes = stats.TotalLikes
+	}
+
 	// PROFILE-6: privacy — если юзер скрыл last_seen, показываем только себе.
 	// Для других зрителей: is_online=false и last_seen_at=zero.
 	isSelf := viewerID == user.ID

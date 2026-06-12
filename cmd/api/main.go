@@ -123,6 +123,7 @@ func main() {
 	frRepo := postgres.NewFollowRequestRepository(db)
 	searchHistoryRepo := postgres.NewSearchHistoryRepository(db)
 	otpRepo := postgres.NewOTPRepository(db)
+	userStatsRepo := postgres.NewUserStatsRepository(db)
 
 	// WebSocket Hub — must be created before services that emit realtime events.
 	wsHub := ws.NewHub(logger)
@@ -176,7 +177,7 @@ func main() {
 	postService := service.NewPostService(postRepo, userRepo, followRepo, cache, wsHub, mediaService, logger)
 	storyService := service.NewStoryService(storyRepo, userRepo, followRepo, notifRepo, cache, wsHub, mediaService, logger)
 	commentService := service.NewCommentService(commentRepo, postRepo, notifRepo, cache, wsHub, logger)
-	likeService := service.NewLikeService(likeRepo, postRepo, commentRepo, storyRepo, notifRepo, cache, wsHub, logger)
+	likeService := service.NewLikeService(likeRepo, postRepo, commentRepo, storyRepo, notifRepo, userStatsRepo, cache, wsHub, logger)
 	followService := service.NewFollowService(followRepo, frRepo, userRepo, notifRepo, blockRepo, cache, wsHub, logger)
 	notifService := service.NewNotificationService(notifRepo, cache, logger)
 	highlightService := service.NewHighlightService(highlightRepo, userRepo, followRepo, cache, logger)
@@ -242,8 +243,8 @@ func main() {
 	deviceRepo := postgres.NewDeviceRepository(db)
 	scannerRepo := postgres.NewScannerRepository(db)
 	deviceService := service.NewDeviceService(deviceRepo, userRepo, cfg.Device.Secret, logger)
-	// Пересоздаём userService с scannerRepo (нужен для UpdateScanProfile)
-	userService = service.NewUserService(userRepo, followRepo, frRepo, scannerRepo, wsHub, cache, logger)
+	// Пересоздаём userService с scannerRepo + statsRepo
+	userService = service.NewUserService(userRepo, followRepo, frRepo, scannerRepo, userStatsRepo, wsHub, cache, logger)
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, validate, logger)
@@ -258,7 +259,7 @@ func main() {
 	mediaHandler := handler.NewMediaHandler(mediaService, r2Client, logger)
 	searchHandler := handler.NewSearchHandler(searchService, searchHistoryRepo, logger)
 	audioRepo := postgres.NewAudioRepository(db)
-	audioHandler := handler.NewAudioHandler(audioRepo, logger)
+	audioHandler := handler.NewAudioHandler(audioRepo, userStatsRepo, logger)
 	chatHandler := handler.NewChatHandler(chatService, logger)
 	wsHandler := handler.NewWSHandler(wsHub, chatRepo, userRepo, callRepo, notifRepo, followRepo, audioRepo, logger)
 	callHandler := handler.NewCallHandler(callRepo, logger)
@@ -281,6 +282,8 @@ func main() {
 	roomHandler := handler.NewRoomHandler(roomService, validate, logger)
 	stickerRepo := postgres.NewStickerRepository(db)
 	stickerHandler := handler.NewStickerHandler(stickerRepo, r2Client, logger)
+	scannerService := service.NewScannerService(scannerRepo, userRepo, notifRepo, userStatsRepo, wsHub, logger)
+	scannerHandler := handler.NewScannerHandler(scannerService, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -388,6 +391,8 @@ func main() {
 	users.Post("/me/device", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.BindMyDevice)
 	users.Delete("/me/device", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.UnbindMyDevice)
 	users.Put("/me/scan-profile", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.UpdateScanProfile)
+	users.Get("/me/private-whitelist", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.GetPrivateWhitelist)
+	users.Put("/me/private-whitelist", middleware.Auth(jwtManager, sessionStore, userRepo), userHandler.SetPrivateWhitelist)
 	users.Post("/:username/block", middleware.Auth(jwtManager, sessionStore, userRepo), blockHandler.Block)
 	users.Delete("/:username/block", middleware.Auth(jwtManager, sessionStore, userRepo), blockHandler.Unblock)
 	users.Get("/me/restrictions", middleware.Auth(jwtManager, sessionStore, userRepo), restrictionHandler.ListRestricted)
@@ -505,6 +510,8 @@ func main() {
 	api.Get("/audio-tracks/daily-mix", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.DailyMix)
 	api.Get("/audio-tracks/:id", middleware.OptionalAuth(jwtManager), audioHandler.GetTrackByID)
 	api.Post("/audio-tracks/:id/play", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.RecordPlay)
+	api.Post("/audio-tracks/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.LikeTrack)
+	api.Delete("/audio-tracks/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.UnlikeTrack)
 
 	// Playlists (Music v2)
 	playlists := api.Group("/playlists", middleware.Auth(jwtManager, sessionStore, userRepo))
@@ -620,6 +627,13 @@ func main() {
 	api.Get("/invites/me/list", middleware.Auth(jwtManager, sessionStore, userRepo), inviteHandler.MyInvites)
 	api.Post("/invites", middleware.Auth(jwtManager, sessionStore, userRepo), inviteHandler.Create)
 	api.Get("/invites/:code", inviteHandler.Lookup) // public — shown on auth screen
+
+	// Scanner (BLE bracelet likes)
+	scanner := api.Group("/scanner", middleware.Auth(jwtManager, sessionStore, userRepo))
+	scanner.Post("/like", scannerHandler.PostLike)
+	scanner.Delete("/like/:deviceHash", scannerHandler.DeleteLike)
+	scanner.Get("/likes/received", scannerHandler.GetReceivedLikes)
+	scanner.Get("/likes/sent", scannerHandler.GetSentLikes)
 
 	// Admin routes — for the admin.seeu.kz front-end. AdminOnly is applied AFTER
 	// Auth, so unauthenticated calls get 401 and authenticated non-admins get 403.

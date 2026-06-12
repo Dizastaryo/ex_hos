@@ -6,6 +6,11 @@ const (
 	LikeEntityPost    = "post"
 	LikeEntityComment = "comment"
 	LikeEntityStory   = "story"
+	LikeEntityScanner = "scanner" // лайк в BLE-сканере
+	LikeEntityReel    = "reel"
+	LikeEntityAudio   = "audio"
+	LikeEntityVideo   = "video"
+	LikeEntityFile    = "file" // книги и прочие файлы
 )
 
 type Like struct {

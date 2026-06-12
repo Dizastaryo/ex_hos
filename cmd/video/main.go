@@ -84,9 +84,10 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	videoRepo := postgres.NewVideoRepository(db)
 	videoCommentRepo := postgres.NewVideoCommentRepository(db)
+	userStatsRepo := postgres.NewUserStatsRepository(db)
 
 	// Services
-	videoService := service.NewVideoService(videoRepo, logger)
+	videoService := service.NewVideoService(videoRepo, userStatsRepo, logger)
 
 	// Handlers
 	videoHandler := handler.NewVideoHandler(videoService, validate, logger)

@@ -20,13 +20,13 @@ func NewAudioRepository(db *DB) *AudioRepository {
 const audioSelect = `
 	id, title, artist, cover_url, audio_url, duration_seconds, uses_count,
 	genre, created_at, COALESCE(user_id::text, ''), status, rejection_reason,
-	COALESCE(lyrics_lrc, '')`
+	COALESCE(lyrics_lrc, ''), COALESCE(likes_count, 0)`
 
 func scanAudio(rows pgx.Rows) (*domain.AudioTrack, error) {
 	t := &domain.AudioTrack{}
 	if err := rows.Scan(&t.ID, &t.Title, &t.Artist, &t.CoverURL, &t.AudioURL,
 		&t.DurationSeconds, &t.UsesCount, &t.Genre, &t.CreatedAt,
-		&t.UserID, &t.Status, &t.RejectionReason, &t.LyricsLRC); err != nil {
+		&t.UserID, &t.Status, &t.RejectionReason, &t.LyricsLRC, &t.LikesCount); err != nil {
 		return nil, err
 	}
 	return t, nil
@@ -355,4 +355,56 @@ func (r *AudioRepository) GetTrendingTags(ctx context.Context, limit int) ([]*do
 		tags = append(tags, t)
 	}
 	return tags, nil
+}
+
+// LikeTrack ставит лайк userID на трек trackID.
+// Idempotent: ON CONFLICT DO NOTHING. Возвращает isNew=true если лайк новый.
+func (r *AudioRepository) LikeTrack(ctx context.Context, trackID, userID string) (bool, error) {
+	var isNew bool
+	err := r.db.WithTx(ctx, func(tx pgx.Tx) error {
+		tag, txErr := tx.Exec(ctx, `
+			INSERT INTO likes (user_id, entity_id, entity_type)
+			VALUES ($1, $2, 'audio_track')
+			ON CONFLICT (user_id, entity_id, entity_type) DO NOTHING`,
+			userID, trackID)
+		if txErr != nil {
+			return fmt.Errorf("insert audio like: %w", txErr)
+		}
+		if tag.RowsAffected() == 0 {
+			return nil // already liked
+		}
+		isNew = true
+		_, txErr = tx.Exec(ctx,
+			`UPDATE audio_tracks SET likes_count = likes_count + 1 WHERE id = $1`, trackID)
+		return txErr
+	})
+	return isNew, err
+}
+
+// UnlikeTrack убирает лайк userID с трека trackID.
+func (r *AudioRepository) UnlikeTrack(ctx context.Context, trackID, userID string) error {
+	return r.db.WithTx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			DELETE FROM likes WHERE user_id = $1 AND entity_id = $2 AND entity_type = 'audio_track'`,
+			userID, trackID)
+		if err != nil {
+			return fmt.Errorf("delete audio like: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return nil // уже не лайкнут — ок
+		}
+		_, err = tx.Exec(ctx,
+			`UPDATE audio_tracks SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = $1`, trackID)
+		return err
+	})
+}
+
+// IsTrackLiked проверяет лайкнул ли userID трек trackID.
+func (r *AudioRepository) IsTrackLiked(ctx context.Context, trackID, userID string) (bool, error) {
+	var exists bool
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND entity_id = $2 AND entity_type = 'audio_track')`,
+		userID, trackID,
+	).Scan(&exists)
+	return exists, err
 }
