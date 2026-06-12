@@ -85,6 +85,7 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
 	userStatsRepo := postgres.NewUserStatsRepository(db)
+	readingRepo := postgres.NewReadingRepository(db)
 
 	// R2 cloud storage
 	var r2Client *storage.R2
@@ -104,6 +105,7 @@ func main() {
 
 	// Handlers
 	fileHandler := handler.NewFileHandler(fileService, validate, logger)
+	readingHandler := handler.NewReadingHandler(readingRepo, validate, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -169,6 +171,18 @@ func main() {
 
 	// User files
 	api.Get("/users/:id/files", middleware.OptionalAuth(jwtManager), fileHandler.GetUserFiles)
+
+	// Reading progress, bookmarks, status (all require auth)
+	auth := middleware.Auth(jwtManager, sessionStore, userRepo)
+	api.Put("/files/:id/progress", auth, readingHandler.UpsertProgress)
+	api.Get("/files/:id/progress", auth, readingHandler.GetProgress)
+	api.Get("/files/:id/bookmarks", auth, readingHandler.GetBookmarks)
+	api.Post("/files/:id/bookmarks", auth, readingHandler.CreateBookmark)
+	api.Delete("/files/bookmarks/:bookmarkId", auth, readingHandler.DeleteBookmark)
+	api.Get("/files/:id/reading-status", auth, readingHandler.GetReadingStatus)
+	api.Put("/files/:id/reading-status", auth, readingHandler.UpsertReadingStatus)
+	api.Delete("/files/:id/reading-status", auth, readingHandler.DeleteReadingStatus)
+	api.Get("/users/me/reading-list", auth, readingHandler.GetReadingList)
 
 	// 404
 	app.Use(func(c *fiber.Ctx) error {
