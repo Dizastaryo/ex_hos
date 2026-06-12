@@ -1,0 +1,1 @@
+ALTER TABLE users DROP COLUMN IF EXISTS likes_seen_at;

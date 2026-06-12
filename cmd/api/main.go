@@ -637,6 +637,8 @@ func main() {
 	scanner.Delete("/like/:deviceHash", scannerHandler.DeleteLike)
 	scanner.Get("/likes/received", scannerHandler.GetReceivedLikes)
 	scanner.Get("/likes/sent", scannerHandler.GetSentLikes)
+	scanner.Get("/likes/unseen-count", scannerHandler.UnseenLikesCount)
+	scanner.Post("/likes/mark-seen", scannerHandler.MarkLikesSeen)
 
 	// Admin routes — for the admin.seeu.kz front-end. AdminOnly is applied AFTER
 	// Auth, so unauthenticated calls get 401 and authenticated non-admins get 403.

@@ -108,7 +108,10 @@ type UserPublicProfile struct {
 	ChannelAbout     string `json:"channel_about"`
 	ChannelBannerURL string `json:"channel_banner_url"`
 	// TotalLikes — суммарный социальный счёт из user_stats.
-	TotalLikes int `json:"total_likes"`
+	TotalLikes      int    `json:"total_likes"`
+	SocialLevel     int    `json:"social_level"`
+	SocialLevelName string `json:"social_level_name"`
+	NextMilestone   int    `json:"next_milestone"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 

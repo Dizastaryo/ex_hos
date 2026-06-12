@@ -146,9 +146,12 @@ func (s *UserService) GetByUsername(ctx context.Context, username, viewerID stri
 
 	profile := toPublicProfile(user)
 
-	// Social score: подгружаем total_likes из user_stats.
+	// Social score: подгружаем total_likes + уровень из user_stats.
 	if stats, err := s.statsRepo.GetByUserID(ctx, user.ID); err == nil {
 		profile.TotalLikes = stats.TotalLikes
+		profile.SocialLevel = stats.SocialLevel()
+		profile.SocialLevelName = stats.SocialLevelName()
+		profile.NextMilestone = stats.NextMilestone()
 	}
 
 	// PROFILE-6: privacy — если юзер скрыл last_seen, показываем только себе.

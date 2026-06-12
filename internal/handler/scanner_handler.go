@@ -40,6 +40,8 @@ func (h *ScannerHandler) PostLike(c *fiber.Ctx) error {
 			return respondError(c, fiber.StatusNotFound, "device not found or visibility is off")
 		case domain.ErrSelfAction:
 			return respondError(c, fiber.StatusBadRequest, "cannot like yourself")
+		case domain.ErrRateLimited:
+			return respondError(c, fiber.StatusTooManyRequests, "daily like limit reached (100/day)")
 		}
 		h.logger.Error("post scanner like", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to post like")
@@ -133,4 +135,24 @@ func (h *ScannerHandler) GetSentLikes(c *fiber.Ctx) error {
 	}
 
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"items": profiles}, nil)
+}
+
+// GET /api/v1/scanner/likes/unseen-count
+func (h *ScannerHandler) UnseenLikesCount(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	count, err := h.scannerService.UnseenLikesCount(c.Context(), userID)
+	if err != nil {
+		h.logger.Warn("unseen likes count", zap.Error(err))
+		count = 0
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"count": count}, nil)
+}
+
+// POST /api/v1/scanner/likes/mark-seen
+func (h *ScannerHandler) MarkLikesSeen(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	if err := h.scannerService.MarkLikesSeen(c.Context(), userID); err != nil {
+		h.logger.Warn("mark likes seen", zap.Error(err))
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
 }

@@ -30,4 +30,8 @@ var (
 	ErrPlaylistNotFound  = errors.New("playlist not found")
 	ErrRateLimited       = errors.New("rate limited")
 	ErrLastAdmin         = errors.New("last admin in group cannot be removed or demoted")
+	ErrNotParticipant    = errors.New("not a participant of this conversation")
+	ErrGroupFull         = errors.New("group chat has reached the maximum number of participants")
+	ErrBadRequest        = errors.New("bad request")
+	ErrSelfAction        = errors.New("cannot perform this action on yourself")
 )

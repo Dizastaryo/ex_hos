@@ -56,6 +56,12 @@ func (s *ScannerService) PostLike(ctx context.Context, likerID, publicIDHex stri
 		return domain.ErrSelfAction
 	}
 
+	// Rate limit: не более 100 лайков в сутки (anti-spam).
+	dailyCount, err := s.scannerRepo.DailyLikesCount(ctx, likerID)
+	if err == nil && dailyCount >= 100 {
+		return domain.ErrRateLimited
+	}
+
 	isNew, err := s.scannerRepo.UpsertLike(ctx, likerID, targetUserID)
 	if err != nil {
 		return fmt.Errorf("upsert like: %w", err)
@@ -121,4 +127,12 @@ func (s *ScannerService) GetReceivedLikes(ctx context.Context, userID string, li
 // Реальный аккаунт не раскрывается — только scan_alias.
 func (s *ScannerService) GetSentLikes(ctx context.Context, userID string, limit, offset int) ([]*domain.ScanProfile, error) {
 	return s.scannerRepo.GetSentLikeTargets(ctx, userID, limit, offset)
+}
+
+func (s *ScannerService) UnseenLikesCount(ctx context.Context, userID string) (int, error) {
+	return s.scannerRepo.UnseenLikesCount(ctx, userID)
+}
+
+func (s *ScannerService) MarkLikesSeen(ctx context.Context, userID string) error {
+	return s.scannerRepo.MarkLikesSeen(ctx, userID)
 }

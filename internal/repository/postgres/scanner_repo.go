@@ -28,6 +28,18 @@ type ScannerLikeRow struct {
 	CreatedAt     time.Time `db:"created_at"`
 }
 
+// DailyLikesCount возвращает кол-во лайков выставленных likerID за текущие сутки.
+func (r *ScannerRepository) DailyLikesCount(ctx context.Context, likerID string) (int, error) {
+	var count int
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM scanner_likes
+		WHERE liker_id = $1
+		  AND created_at >= CURRENT_DATE`,
+		likerID,
+	).Scan(&count)
+	return count, err
+}
+
 // UpsertLike ставит лайк от likerID на targetUserID.
 // Если лайк уже стоит — ничего не делает (idempotent).
 // Возвращает isNew=true если это новый лайк (не дубль).
@@ -128,7 +140,7 @@ func (r *ScannerRepository) GetSentLikeTargets(ctx context.Context, likerID stri
 	return result, nil
 }
 
-// GetUserByScanLike резолвит targetUserID по device_public_id для операции лайка.
+// GetUserByDeviceHash резолвит targetUserID по device_public_id для лайка.
 // scan_enabled проверяется — нельзя лайкать того, кто отключил видимость.
 func (r *ScannerRepository) GetUserByDeviceHash(ctx context.Context, publicIDHex string) (string, error) {
 	var userID string
@@ -145,6 +157,32 @@ func (r *ScannerRepository) GetUserByDeviceHash(ctx context.Context, publicIDHex
 			return "", domain.ErrNotFound
 		}
 		return "", fmt.Errorf("get user by device hash: %w", err)
+	}
+	return userID, nil
+}
+
+// GetUserByPrivateDeviceHash резолвит targetUserID по device_private_id.
+// Проверяет что viewerID находится в private whitelist ownerа.
+// Если viewerID не в whitelist → ErrNotFound (не раскрываем факт существования).
+func (r *ScannerRepository) GetUserByPrivateDeviceHash(ctx context.Context, privateIDHex, viewerID string) (string, error) {
+	var userID string
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT u.id FROM users u
+		WHERE u.device_private_id = $1
+		  AND u.device_private_id <> ''
+		  AND u.scan_enabled = TRUE
+		  AND EXISTS (
+		      SELECT 1 FROM device_private_whitelist w
+		      WHERE w.owner_id = u.id AND w.allowed_id = $2
+		  )
+		LIMIT 1`,
+		privateIDHex, viewerID,
+	).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrNotFound
+		}
+		return "", fmt.Errorf("get user by private device hash: %w", err)
 	}
 	return userID, nil
 }
@@ -180,5 +218,27 @@ func (r *ScannerRepository) UpdateScanProfile(ctx context.Context, userID string
 	}
 	q += " WHERE id = " + next(userID)
 	_, err := r.db.Pool.Exec(ctx, q, args...)
+	return err
+}
+
+// UnseenLikesCount возвращает кол-во лайков на userID с момента
+// последнего просмотра (users.likes_seen_at).
+func (r *ScannerRepository) UnseenLikesCount(ctx context.Context, userID string) (int, error) {
+	var count int
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM scanner_likes sl
+		JOIN users u ON u.id = $1
+		WHERE sl.target_user_id = $1
+		  AND sl.created_at > u.likes_seen_at`,
+		userID,
+	).Scan(&count)
+	return count, err
+}
+
+// MarkLikesSeen обновляет users.likes_seen_at = NOW() для userID.
+func (r *ScannerRepository) MarkLikesSeen(ctx context.Context, userID string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE users SET likes_seen_at = NOW() WHERE id = $1`, userID)
 	return err
 }
