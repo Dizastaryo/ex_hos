@@ -8,13 +8,42 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/repository/postgres"
+	"github.com/seeu/backend/pkg/docextract"
 	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
+
+// allowedExtensions — белый список расширений для библиотеки.
+// Только читательские форматы (документы, книги, презентации).
+var allowedExtensions = map[string]bool{
+	"pdf": true, "epub": true, "fb2": true,
+	"docx": true, "pptx": true, "txt": true,
+	"rtf": true, "md": true, "odt": true, "odp": true,
+}
+
+// allowedMimeTypes — белый список MIME-типов.
+// application/octet-stream разрешён если расширение в allowedExtensions.
+var allowedMimeTypes = map[string]bool{
+	"application/pdf":           true,
+	"application/epub+zip":      true,
+	"application/x-fictionbook+xml": true,
+	"text/xml":                  true, // некоторые клиенты шлют FB2 как text/xml
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":    true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation":  true,
+	"text/plain":                true,
+	"application/rtf":           true,
+	"text/rtf":                  true,
+	"text/markdown":             true,
+	"text/x-markdown":           true,
+	"application/vnd.oasis.opendocument.text":         true,
+	"application/vnd.oasis.opendocument.presentation": true,
+	"application/octet-stream": true, // проверяем по расширению
+}
 
 // MaxLibraryFileSize caps the size of any single file uploaded to the
 // library. Documents typically fit well under this; videos that big should
@@ -43,16 +72,15 @@ func NewFileService(fileRepo *postgres.FileRepository, statsRepo *postgres.UserS
 // Upload saves a multipart file blob to disk under /uploads/library/<date>/
 // and inserts the metadata row in `files`. Returns the persisted File.
 //
-// Allowed: any MIME, capped at MaxLibraryFileSize. Unlike post-media we don't
-// dedup via media_files — library is a separate domain (documents vs feed
-// content), and dedup'd "ref_count" semantics don't carry over (a doc owned
-// by user A can't share an inode with user B's doc and let either delete it).
+// Only allowed: pdf, epub, fb2, docx, pptx, txt, rtf, md, odt, odp.
+// На upload автоматически извлекается текст (для Tier-2 форматов) и
+// подсчитываются страницы (для PDF).
 func (s *FileService) Upload(
 	ctx context.Context,
 	userID string,
 	file multipart.File,
 	header *multipart.FileHeader,
-	categoryID, description string,
+	categoryID, description, title, authorName, language string,
 ) (*domain.File, error) {
 	if header.Size <= 0 {
 		return nil, fmt.Errorf("empty file")
@@ -61,9 +89,19 @@ func (s *FileService) Upload(
 		return nil, fmt.Errorf("file size exceeds %d bytes", MaxLibraryFileSize)
 	}
 
+	// ── Проверка формата ──────────────────────────────────────────────────────
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(header.Filename), "."))
+	if !allowedExtensions[ext] {
+		return nil, fmt.Errorf("format not allowed: %s. Supported: pdf, epub, fb2, docx, pptx, txt, rtf, md, odt, odp", ext)
+	}
+
 	contentType := header.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
+	}
+	// Если MIME не в whitelist и не octet-stream → отказываем
+	if !allowedMimeTypes[contentType] {
+		return nil, fmt.Errorf("mime type not allowed: %s", contentType)
 	}
 
 	bytes, err := io.ReadAll(file)
@@ -72,9 +110,9 @@ func (s *FileService) Upload(
 	}
 
 	hash := fmt.Sprintf("%x", sha256.Sum256(bytes))
-	ext := filepath.Ext(header.Filename)
+	dotExt := "." + ext
 	datePath := time.Now().Format("2006/01/02")
-	storedName := hash[:16] + ext
+	storedName := hash[:16] + dotExt
 	r2Key := "uploads/library/" + datePath + "/" + storedName
 
 	var fileURL string
@@ -96,14 +134,38 @@ func (s *FileService) Upload(
 		fileURL = "/uploads/library/" + datePath + "/" + storedName
 	}
 
+	// ── Метаданные ───────────────────────────────────────────────────────────
+	// Title: берём из формы, fallback — filename без расширения
+	if title == "" {
+		title = header.Filename
+		if i := strings.LastIndex(title, "."); i > 0 {
+			title = title[:i]
+		}
+	}
+
+	// Извлечение текста для Tier-2/3 форматов (graceful — не ломает upload)
+	extractedText := docextract.ExtractText(bytes, ext)
+
+	// Подсчёт страниц для PDF
+	pagesCount := 0
+	if ext == "pdf" {
+		pagesCount = docextract.CountPDFPages(bytes)
+	}
+
 	entity := &domain.File{
-		UserID:      userID,
-		Filename:    header.Filename,
-		FileURL:     fileURL,
-		MimeType:    contentType,
-		FileSize:    header.Size,
-		CategoryID:  categoryID,
-		Description: description,
+		UserID:        userID,
+		Filename:      header.Filename,
+		Title:         title,
+		AuthorName:    authorName,
+		Language:      language,
+		FileURL:       fileURL,
+		MimeType:      contentType,
+		FileSize:      header.Size,
+		CategoryID:    categoryID,
+		Description:   description,
+		PagesCount:    pagesCount,
+		DocFormat:     ext,
+		ExtractedText: extractedText,
 	}
 	if err := s.fileRepo.Create(ctx, entity); err != nil {
 		return nil, err
@@ -190,6 +252,10 @@ func (s *FileService) DownloadFile(ctx context.Context, fileID, userID string) (
 	}
 	_ = s.fileRepo.RecordDownload(ctx, fileID, userID)
 	return file, nil
+}
+
+func (s *FileService) GetExtractedText(ctx context.Context, fileID string) (string, error) {
+	return s.fileRepo.GetExtractedText(ctx, fileID)
 }
 
 func (s *FileService) GetCategories(ctx context.Context) ([]*domain.FileCategory, error) {

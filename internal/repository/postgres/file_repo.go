@@ -45,27 +45,37 @@ func (r *FileRepository) CheckUserVisibility(ctx context.Context, ownerID, viewe
 }
 
 func (r *FileRepository) Create(ctx context.Context, f *domain.File) error {
-	// Determine if previewable
-	previewable := isPreviewable(f.MimeType)
+	// Все форматы библиотеки v2 поддерживают inline-просмотр
+	previewable := isPreviewable(f.DocFormat)
 
-	// pgx infers $6 as text — without the explicit cast, NULLIF returns text
-	// and PostgreSQL refuses the implicit text→uuid coercion (SQLSTATE 42804).
 	query := `
-		INSERT INTO files (user_id, filename, file_url, mime_type, file_size, category_id, is_previewable, description)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::uuid, $7, $8)
+		INSERT INTO files (
+			user_id, filename, title, author_name, language,
+			file_url, mime_type, file_size, category_id,
+			is_previewable, description, pages_count, doc_format, extracted_text
+		) VALUES (
+			$1, $2, $3, $4, $5,
+			$6, $7, $8, NULLIF($9, '')::uuid,
+			$10, $11, $12, $13, NULLIF($14, '')
+		)
 		RETURNING id, downloads_count, created_at`
 
 	return r.db.Pool.QueryRow(ctx, query,
-		f.UserID, f.Filename, f.FileURL, f.MimeType, f.FileSize,
-		f.CategoryID, previewable, f.Description,
+		f.UserID, f.Filename, f.Title, f.AuthorName, f.Language,
+		f.FileURL, f.MimeType, f.FileSize, f.CategoryID,
+		previewable, f.Description, f.PagesCount, f.DocFormat, f.ExtractedText,
 	).Scan(&f.ID, &f.DownloadsCount, &f.CreatedAt)
 }
 
 func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, error) {
 	query := `
-		SELECT f.id, f.user_id, f.filename, f.file_url, f.mime_type, f.file_size,
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       f.preview_url, f.description, f.created_at,
+		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
 		JOIN users u ON u.id = f.user_id
@@ -73,9 +83,13 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 
 	file := &domain.File{User: &domain.UserShort{}}
 	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
-		&file.ID, &file.UserID, &file.Filename, &file.FileURL, &file.MimeType, &file.FileSize,
+		&file.ID, &file.UserID, &file.Filename,
+		&file.Title, &file.AuthorName, &file.Language,
+		&file.FileURL, &file.MimeType, &file.FileSize,
 		&file.CategoryID, &file.DownloadsCount, &file.LikesCount, &file.IsPreviewable,
-		&file.PreviewURL, &file.Description, &file.CreatedAt,
+		&file.PreviewURL, &file.Description,
+		&file.PagesCount, &file.DocFormat,
+		&file.CreatedAt,
 		&file.User.ID, &file.User.Username, &file.User.FullName,
 		&file.User.AvatarURL, &file.User.IsVerified,
 	)
@@ -88,16 +102,37 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 	return file, nil
 }
 
-// Trending (LIB-6) — top files за последние 7 дней по сумме likes+downloads.
-// Сортировка: hot-score = likes_count*2 + downloads_count в window'е.
+// GetExtractedText возвращает только extracted_text файла (не грузим в обычных запросах).
+func (r *FileRepository) GetExtractedText(ctx context.Context, id string) (string, error) {
+	var text *string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT extracted_text FROM files WHERE id = $1`, id,
+	).Scan(&text)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrFileNotFound
+		}
+		return "", fmt.Errorf("get extracted text: %w", err)
+	}
+	if text == nil {
+		return "", nil
+	}
+	return *text, nil
+}
+
+// Trending (LIB-6) — top files за последние 7 дней по hot-score.
 func (r *FileRepository) Trending(ctx context.Context, limit int) ([]*domain.File, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT f.id, f.user_id, f.filename, f.file_url, f.mime_type, f.file_size,
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       f.preview_url, f.description, f.created_at,
+		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
 		JOIN users u ON u.id = f.user_id
@@ -108,32 +143,24 @@ func (r *FileRepository) Trending(ctx context.Context, limit int) ([]*domain.Fil
 		return nil, fmt.Errorf("trending files: %w", err)
 	}
 	defer rows.Close()
-	var files []*domain.File
-	for rows.Next() {
-		f := &domain.File{User: &domain.UserShort{}}
-		if err := rows.Scan(
-			&f.ID, &f.UserID, &f.Filename, &f.FileURL, &f.MimeType, &f.FileSize,
-			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
-			&f.PreviewURL, &f.Description, &f.CreatedAt,
-			&f.User.ID, &f.User.Username, &f.User.FullName,
-			&f.User.AvatarURL, &f.User.IsVerified,
-		); err != nil {
-			return nil, err
-		}
-		files = append(files, f)
-	}
-	return files, nil
+	return scanFiles(rows)
 }
 
 func (r *FileRepository) List(ctx context.Context, categoryID string, limit, offset int) ([]*domain.File, int, error) {
-	countQuery := `SELECT COUNT(*) FROM files`
-	listQuery := `
-		SELECT f.id, f.user_id, f.filename, f.file_url, f.mime_type, f.file_size,
+	const selectCols = `
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       f.preview_url, f.description, f.created_at,
+		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
 		JOIN users u ON u.id = f.user_id`
+
+	countQuery := `SELECT COUNT(*) FROM files`
+	listQuery := selectCols
 
 	args := []interface{}{}
 	argIdx := 1
@@ -159,21 +186,8 @@ func (r *FileRepository) List(ctx context.Context, categoryID string, limit, off
 	}
 	defer rows.Close()
 
-	var files []*domain.File
-	for rows.Next() {
-		f := &domain.File{User: &domain.UserShort{}}
-		if err := rows.Scan(
-			&f.ID, &f.UserID, &f.Filename, &f.FileURL, &f.MimeType, &f.FileSize,
-			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
-			&f.PreviewURL, &f.Description, &f.CreatedAt,
-			&f.User.ID, &f.User.Username, &f.User.FullName,
-			&f.User.AvatarURL, &f.User.IsVerified,
-		); err != nil {
-			return nil, 0, err
-		}
-		files = append(files, f)
-	}
-	return files, total, nil
+	files, err := scanFiles(rows)
+	return files, total, err
 }
 
 func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit, offset int) ([]*domain.File, int, error) {
@@ -182,37 +196,27 @@ func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit,
 		return nil, 0, err
 	}
 
-	query := `
-		SELECT f.id, f.user_id, f.filename, f.file_url, f.mime_type, f.file_size,
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       f.preview_url, f.description, f.created_at,
+		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
 		JOIN users u ON u.id = f.user_id
 		WHERE f.user_id = $1
-		ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`
-
-	rows, err := r.db.Pool.Query(ctx, query, userID, limit, offset)
+		ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`,
+		userID, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var files []*domain.File
-	for rows.Next() {
-		f := &domain.File{User: &domain.UserShort{}}
-		if err := rows.Scan(
-			&f.ID, &f.UserID, &f.Filename, &f.FileURL, &f.MimeType, &f.FileSize,
-			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
-			&f.PreviewURL, &f.Description, &f.CreatedAt,
-			&f.User.ID, &f.User.Username, &f.User.FullName,
-			&f.User.AvatarURL, &f.User.IsVerified,
-		); err != nil {
-			return nil, 0, err
-		}
-		files = append(files, f)
-	}
-	return files, total, nil
+	files, err := scanFiles(rows)
+	return files, total, err
 }
 
 func (r *FileRepository) Delete(ctx context.Context, id, userID string) error {
@@ -285,7 +289,10 @@ func (r *FileRepository) IsFileLiked(ctx context.Context, fileID, userID string)
 }
 
 func (r *FileRepository) GetCategories(ctx context.Context) ([]*domain.FileCategory, error) {
-	rows, err := r.db.Pool.Query(ctx, `SELECT id, name, created_at FROM file_categories ORDER BY name`)
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id, name, COALESCE(slug, ''), COALESCE(sort_order, 0), created_at
+		FROM file_categories
+		ORDER BY COALESCE(sort_order, 999), name`)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +301,7 @@ func (r *FileRepository) GetCategories(ctx context.Context) ([]*domain.FileCateg
 	var cats []*domain.FileCategory
 	for rows.Next() {
 		c := &domain.FileCategory{}
-		if err := rows.Scan(&c.ID, &c.Name, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Slug, &c.SortOrder, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		cats = append(cats, c)
@@ -302,11 +309,43 @@ func (r *FileRepository) GetCategories(ctx context.Context) ([]*domain.FileCateg
 	return cats, nil
 }
 
-func isPreviewable(mimeType string) bool {
-	switch mimeType {
-	case "application/pdf", "text/plain", "text/html", "text/markdown",
-		"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml":
+// isPreviewable возвращает true для всех форматов библиотеки v2 —
+// каждый поддерживает inline-просмотр в Flutter-ридере.
+func isPreviewable(docFormat string) bool {
+	switch docFormat {
+	case "pdf", "epub", "fb2", "docx", "pptx", "txt", "rtf", "md", "odt", "odp":
 		return true
 	}
+	// Legacy: поддержка старых записей по MIME
 	return false
+}
+
+// scanFiles сканирует rows с расширенными полями v2 в []*domain.File.
+// Все запросы List/Trending/GetUserFiles должны использовать эту функцию
+// для единообразия порядка колонок.
+func scanFiles(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Close()
+}) ([]*domain.File, error) {
+	defer rows.Close()
+	var files []*domain.File
+	for rows.Next() {
+		f := &domain.File{User: &domain.UserShort{}}
+		if err := rows.Scan(
+			&f.ID, &f.UserID, &f.Filename,
+			&f.Title, &f.AuthorName, &f.Language,
+			&f.FileURL, &f.MimeType, &f.FileSize,
+			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
+			&f.PreviewURL, &f.Description,
+			&f.PagesCount, &f.DocFormat,
+			&f.CreatedAt,
+			&f.User.ID, &f.User.Username, &f.User.FullName,
+			&f.User.AvatarURL, &f.User.IsVerified,
+		); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, nil
 }

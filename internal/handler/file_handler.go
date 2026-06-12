@@ -46,8 +46,11 @@ func (h *FileHandler) Upload(c *fiber.Ctx) error {
 
 	categoryID := c.FormValue("category_id")
 	description := c.FormValue("description")
+	title := c.FormValue("title")
+	authorName := c.FormValue("author_name")
+	language := c.FormValue("language")
 
-	file, err := h.fileService.Upload(c.Context(), userID, src, header, categoryID, description)
+	file, err := h.fileService.Upload(c.Context(), userID, src, header, categoryID, description, title, authorName, language)
 	if err != nil {
 		h.logger.Error("upload file", zap.Error(err))
 		return respondError(c, fiber.StatusBadRequest, err.Error())
@@ -187,6 +190,28 @@ func (h *FileHandler) PreviewFile(c *fiber.Ctx) error {
 		"mime_type": file.MimeType,
 		"filename":  file.Filename,
 	}, nil)
+}
+
+// GetText godoc
+// GET /api/v1/files/:id/text
+//
+// Возвращает извлечённый plain-text документа.
+// Используется Flutter-ридерами для Tier-2 форматов (FB2, DOCX, RTF, ODT)
+// и Tier-3 slide-preview (PPTX, ODP).
+// 204 если текст не был извлечён (PDF, EPUB, пустой файл).
+func (h *FileHandler) GetText(c *fiber.Ctx) error {
+	id := c.Params("id")
+	text, err := h.fileService.GetExtractedText(c.Context(), id)
+	if err != nil {
+		if err == domain.ErrFileNotFound {
+			return respondError(c, fiber.StatusNotFound, "file not found")
+		}
+		return respondError(c, fiber.StatusInternalServerError, "failed to get text")
+	}
+	if text == "" {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"text": text}, nil)
 }
 
 // GET /api/v1/files/categories
