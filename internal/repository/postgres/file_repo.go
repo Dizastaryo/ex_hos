@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/seeu/backend/internal/domain"
@@ -120,12 +121,22 @@ func (r *FileRepository) GetExtractedText(ctx context.Context, id string) (strin
 	return *text, nil
 }
 
-// Trending (LIB-6) — top files за последние 7 дней по hot-score.
-func (r *FileRepository) Trending(ctx context.Context, limit int) ([]*domain.File, error) {
+// Trending (LIB-6) — top files по hot-score за указанный период.
+// period: "week" (7d, default) | "month" (30d) | "all"
+func (r *FileRepository) Trending(ctx context.Context, limit int, period string) ([]*domain.File, error) {
 	if limit <= 0 {
 		limit = 10
 	}
-	rows, err := r.db.Pool.Query(ctx, `
+	var intervalClause string
+	switch period {
+	case "month":
+		intervalClause = "AND f.created_at > NOW() - INTERVAL '30 days'"
+	case "all":
+		intervalClause = ""
+	default: // "week"
+		intervalClause = "AND f.created_at > NOW() - INTERVAL '7 days'"
+	}
+	query := fmt.Sprintf(`
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
@@ -136,9 +147,10 @@ func (r *FileRepository) Trending(ctx context.Context, limit int) ([]*domain.Fil
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
 		JOIN users u ON u.id = f.user_id
-		WHERE f.created_at > NOW() - INTERVAL '7 days'
+		WHERE 1=1 %s
 		ORDER BY (f.likes_count * 2 + f.downloads_count) DESC, f.created_at DESC
-		LIMIT $1`, limit)
+		LIMIT $1`, intervalClause)
+	rows, err := r.db.Pool.Query(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("trending files: %w", err)
 	}
@@ -146,7 +158,10 @@ func (r *FileRepository) Trending(ctx context.Context, limit int) ([]*domain.Fil
 	return scanFiles(rows)
 }
 
-func (r *FileRepository) List(ctx context.Context, categoryID string, limit, offset int) ([]*domain.File, int, error) {
+// List возвращает файлы с фильтрацией по категории, полнотекстовым поиском,
+// сортировкой и cursor-based пагинацией.
+// Возвращает []*domain.File и nextCursor (пустая строка — это последняя страница).
+func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*domain.File, string, error) {
 	const selectCols = `
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
@@ -159,35 +174,84 @@ func (r *FileRepository) List(ctx context.Context, categoryID string, limit, off
 		FROM files f
 		JOIN users u ON u.id = f.user_id`
 
-	countQuery := `SELECT COUNT(*) FROM files`
-	listQuery := selectCols
-
 	args := []interface{}{}
-	argIdx := 1
+	n := 1 // next placeholder index
+	where := []string{}
 
-	if categoryID != "" {
-		countQuery += fmt.Sprintf(" WHERE category_id = $%d", argIdx)
-		listQuery += fmt.Sprintf(" WHERE f.category_id = $%d", argIdx)
-		args = append(args, categoryID)
-		argIdx++
+	// Фильтр по категории
+	if p.CategoryID != "" {
+		where = append(where, fmt.Sprintf("f.category_id = $%d", n))
+		args = append(args, p.CategoryID)
+		n++
 	}
 
-	var total int
-	if err := r.db.Pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, err
+	isSearch := p.Q != ""
+
+	// Поиск через tsvector
+	if isSearch {
+		where = append(where, fmt.Sprintf("f.search_vector @@ plainto_tsquery('russian', $%d)", n))
+		args = append(args, p.Q)
+		n++
 	}
 
-	listQuery += fmt.Sprintf(" ORDER BY f.created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
-	args = append(args, limit, offset)
+	// Cursor (только при не-поисковой выборке и sort=date)
+	if p.Cursor != "" && !isSearch && (p.Sort == "" || p.Sort == "date") {
+		where = append(where, fmt.Sprintf("f.created_at < (SELECT created_at FROM files WHERE id = $%d)", n))
+		args = append(args, p.Cursor)
+		n++
+	}
 
-	rows, err := r.db.Pool.Query(ctx, listQuery, args...)
+	query := selectCols
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+
+	// ORDER BY
+	if isSearch {
+		// ts_rank — аргумент уже в args; ссылаемся на его позицию
+		qPos := 1
+		if p.CategoryID != "" {
+			qPos = 2
+		}
+		query += fmt.Sprintf(" ORDER BY ts_rank(f.search_vector, plainto_tsquery('russian', $%d)) DESC, f.created_at DESC", qPos)
+	} else {
+		switch p.Sort {
+		case "likes":
+			query += " ORDER BY f.likes_count DESC, f.created_at DESC"
+		case "downloads":
+			query += " ORDER BY f.downloads_count DESC, f.created_at DESC"
+		case "title":
+			query += " ORDER BY f.title ASC"
+		default: // "date"
+			query += " ORDER BY f.created_at DESC"
+		}
+	}
+
+	// Fetch limit+1 чтобы знать есть ли следующая страница
+	limit := p.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	query += fmt.Sprintf(" LIMIT $%d", n)
+	args = append(args, limit+1)
+
+	rows, err := r.db.Pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, "", fmt.Errorf("list files: %w", err)
 	}
 	defer rows.Close()
 
 	files, err := scanFiles(rows)
-	return files, total, err
+	if err != nil {
+		return nil, "", err
+	}
+
+	nextCursor := ""
+	if len(files) > limit {
+		nextCursor = files[limit-1].ID
+		files = files[:limit]
+	}
+	return files, nextCursor, nil
 }
 
 func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit, offset int) ([]*domain.File, int, error) {

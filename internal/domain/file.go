@@ -46,6 +46,15 @@ type File struct {
 	ExtractedText string `json:"-"`
 }
 
+// FileListParams — параметры запроса GET /files
+type FileListParams struct {
+	CategoryID string
+	Q          string // поисковый запрос
+	Sort       string // date | likes | downloads | title
+	Cursor     string // UUID последнего файла предыдущей страницы
+	Limit      int
+}
+
 type CreateFileRequest struct {
 	Filename    string `json:"filename" validate:"required,min=1,max=500"`
 	FileURL     string `json:"file_url" validate:"required"`

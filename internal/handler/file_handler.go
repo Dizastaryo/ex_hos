@@ -77,13 +77,14 @@ func (h *FileHandler) CreateFile(c *fiber.Ctx) error {
 }
 
 // GET /api/v1/files/trending (LIB-6)
-// Top-N files за последние 7 дней по комбинированному hot-score.
+// Top-N files по hot-score. ?period=week|month|all  ?limit=10
 func (h *FileHandler) Trending(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 10)
 	if limit > 50 {
 		limit = 50
 	}
-	files, err := h.fileService.Trending(c.Context(), limit)
+	period := c.Query("period", "week")
+	files, err := h.fileService.Trending(c.Context(), limit, period)
 	if err != nil {
 		h.logger.Error("trending files", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to get trending")
@@ -92,15 +93,25 @@ func (h *FileHandler) Trending(c *fiber.Ctx) error {
 }
 
 // GET /api/v1/files
+// Query: category_id, q, sort (date|likes|downloads|title), cursor, limit
 func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
-	categoryID := c.Query("category_id")
-	p := pagination.FromFiber(c.Query("page", "1"), c.Query("limit", "20"))
-	files, total, err := h.fileService.ListFiles(c.Context(), categoryID, p.Limit, p.Offset)
+	limit := c.QueryInt("limit", 20)
+	if limit > 100 {
+		limit = 100
+	}
+	p := domain.FileListParams{
+		CategoryID: c.Query("category_id"),
+		Q:          c.Query("q"),
+		Sort:       c.Query("sort", "date"),
+		Cursor:     c.Query("cursor"),
+		Limit:      limit,
+	}
+	files, nextCursor, err := h.fileService.ListFiles(c.Context(), p)
 	if err != nil {
 		h.logger.Error("list files", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to list files")
 	}
-	return respondSuccess(c, fiber.StatusOK, files, pagination.MetaFromTotal(total, p))
+	return respondSuccess(c, fiber.StatusOK, files, fiber.Map{"next_cursor": nextCursor})
 }
 
 // GET /api/v1/files/:id

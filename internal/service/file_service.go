@@ -193,13 +193,13 @@ func (s *FileService) GetFile(ctx context.Context, id string) (*domain.File, err
 	return s.fileRepo.GetByID(ctx, id)
 }
 
-// Trending (LIB-6) — top-N files за 7 дней.
-func (s *FileService) Trending(ctx context.Context, limit int) ([]*domain.File, error) {
-	return s.fileRepo.Trending(ctx, limit)
+// Trending (LIB-6) — top-N files за указанный период.
+func (s *FileService) Trending(ctx context.Context, limit int, period string) ([]*domain.File, error) {
+	return s.fileRepo.Trending(ctx, limit, period)
 }
 
-func (s *FileService) ListFiles(ctx context.Context, categoryID string, limit, offset int) ([]*domain.File, int, error) {
-	return s.fileRepo.List(ctx, categoryID, limit, offset)
+func (s *FileService) ListFiles(ctx context.Context, p domain.FileListParams) ([]*domain.File, string, error) {
+	return s.fileRepo.List(ctx, p)
 }
 
 func (s *FileService) GetUserFiles(ctx context.Context, ownerID, viewerID string, limit, offset int) ([]*domain.File, int, error) {
