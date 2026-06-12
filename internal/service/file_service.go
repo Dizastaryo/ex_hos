@@ -210,7 +210,32 @@ func (s *FileService) GetUserFiles(ctx context.Context, ownerID, viewerID string
 }
 
 func (s *FileService) DeleteFile(ctx context.Context, id, userID string) error {
-	return s.fileRepo.Delete(ctx, id, userID)
+	// Load before delete to get file URL for blob cleanup
+	file, err := s.fileRepo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if file.UserID != userID {
+		return domain.ErrFileNotFound
+	}
+	if err := s.fileRepo.Delete(ctx, id, userID); err != nil {
+		return err
+	}
+	// Delete blob from R2 (best-effort)
+	if s.r2 != nil {
+		if key, ok := s.r2.KeyFromURL(file.FileURL); ok {
+			if delErr := s.r2.Delete(ctx, key); delErr != nil {
+				s.logger.Warn("delete r2 blob", zap.Error(delErr), zap.String("key", key))
+			}
+		}
+	} else {
+		// Local disk — strip leading "/" and delete
+		localPath := "." + file.FileURL
+		if rmErr := os.Remove(localPath); rmErr != nil {
+			s.logger.Warn("delete local file", zap.Error(rmErr), zap.String("path", localPath))
+		}
+	}
+	return nil
 }
 
 func (s *FileService) LikeFile(ctx context.Context, fileID, userID string) error {

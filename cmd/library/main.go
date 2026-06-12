@@ -86,6 +86,7 @@ func main() {
 	fileRepo := postgres.NewFileRepository(db)
 	userStatsRepo := postgres.NewUserStatsRepository(db)
 	readingRepo := postgres.NewReadingRepository(db)
+	collectionRepo := postgres.NewCollectionRepository(db)
 
 	// R2 cloud storage
 	var r2Client *storage.R2
@@ -106,6 +107,7 @@ func main() {
 	// Handlers
 	fileHandler := handler.NewFileHandler(fileService, validate, logger)
 	readingHandler := handler.NewReadingHandler(readingRepo, validate, logger)
+	collectionHandler := handler.NewCollectionHandler(collectionRepo, fileService, validate, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -183,6 +185,18 @@ func main() {
 	api.Put("/files/:id/reading-status", auth, readingHandler.UpsertReadingStatus)
 	api.Delete("/files/:id/reading-status", auth, readingHandler.DeleteReadingStatus)
 	api.Get("/users/me/reading-list", auth, readingHandler.GetReadingList)
+
+	// File stats (owner only)
+	api.Get("/files/:id/stats", auth, collectionHandler.GetFileStats)
+
+	// Collections (all require auth)
+	api.Get("/collections", auth, collectionHandler.ListCollections)
+	api.Post("/collections", auth, collectionHandler.CreateCollection)
+	api.Get("/collections/:id", auth, collectionHandler.GetCollection)
+	api.Put("/collections/:id", auth, collectionHandler.UpdateCollection)
+	api.Delete("/collections/:id", auth, collectionHandler.DeleteCollection)
+	api.Post("/collections/:id/files", auth, collectionHandler.AddFile)
+	api.Delete("/collections/:id/files/:fileId", auth, collectionHandler.RemoveFile)
 
 	// 404
 	app.Use(func(c *fiber.Ctx) error {
