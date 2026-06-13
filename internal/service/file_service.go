@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/repository/postgres"
 	"github.com/seeu/backend/pkg/docextract"
+	"github.com/seeu/backend/pkg/pdfconvert"
 	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
@@ -350,6 +352,135 @@ func (s *FileService) GetExtractedText(ctx context.Context, fileID string) (stri
 	return s.fileRepo.GetExtractedText(ctx, fileID)
 }
 
+// ReExtractText re-runs text extraction on a stored file and saves the result.
+// Used when extracted_text is NULL (files uploaded before the extraction feature
+// was added) or when the extractor is updated to fix bugs.
+func (s *FileService) ReExtractText(ctx context.Context, fileID string) (string, error) {
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+
+	// Read file bytes from disk (R2 files have https:// URLs — not supported here).
+	if strings.HasPrefix(file.FileURL, "http") {
+		return "", fmt.Errorf("re-extract not supported for R2-hosted files")
+	}
+	// fileURL is a server-relative path like /uploads/library/2026/05/04/foo.docx
+	localPath := filepath.Join(".", file.FileURL)
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return "", fmt.Errorf("read file: %w", err)
+	}
+
+	ext := docextract.DocFormat(file.Filename)
+	text := docextract.ExtractText(data, ext)
+
+	if err := s.fileRepo.UpdateExtractedText(ctx, fileID, text); err != nil {
+		return "", fmt.Errorf("save extracted text: %w", err)
+	}
+	return text, nil
+}
+
 func (s *FileService) GetCategories(ctx context.Context) ([]*domain.FileCategory, error) {
 	return s.fileRepo.GetCategories(ctx)
+}
+
+// GetOrConvertToPDF возвращает URL к PDF-версии файла.
+//   - PDF: возвращает оригинальный fileUrl без конвертации.
+//   - Все остальные форматы: проверяет кэш в БД; если нет — скачивает оригинал
+//     с R2, конвертирует через LibreOffice headless, загружает PDF в R2 и
+//     сохраняет URL в pdf_cache_url.
+func (s *FileService) GetOrConvertToPDF(ctx context.Context, fileID string) (string, error) {
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+
+	// PDF не требует конвертации
+	if file.DocFormat == "pdf" {
+		return file.FileURL, nil
+	}
+
+	// Проверяем кэш
+	cachedURL, err := s.fileRepo.GetPdfCacheURL(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+	if cachedURL != "" {
+		return cachedURL, nil
+	}
+
+	// Проверяем наличие LibreOffice
+	if !pdfconvert.IsAvailable() {
+		return "", fmt.Errorf("PDF conversion unavailable: LibreOffice not installed on server")
+	}
+
+	// Скачиваем оригинал
+	srcBytes, err := s.downloadFileBytes(ctx, file)
+	if err != nil {
+		return "", fmt.Errorf("download original: %w", err)
+	}
+
+	// Записываем во временный файл (LibreOffice требует путь к файлу)
+	tmpDir, err := os.MkdirTemp("", "pdfconv_src_*")
+	if err != nil {
+		return "", fmt.Errorf("mktemp src: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	srcPath := filepath.Join(tmpDir, "input."+file.DocFormat)
+	if err := os.WriteFile(srcPath, srcBytes, 0o644); err != nil {
+		return "", fmt.Errorf("write src: %w", err)
+	}
+
+	// Конвертируем
+	pdfData, err := pdfconvert.ConvertToPDF(ctx, srcPath)
+	if err != nil {
+		return "", fmt.Errorf("convert: %w", err)
+	}
+
+	// Загружаем PDF в хранилище
+	r2Key := "uploads/library/pdf-cache/" + fileID + ".pdf"
+	var pdfURL string
+	if s.r2 != nil {
+		pdfURL, err = s.r2.Upload(ctx, r2Key, pdfData, "application/pdf")
+		if err != nil {
+			return "", fmt.Errorf("upload pdf to r2: %w", err)
+		}
+	} else {
+		localDir := filepath.Join(libraryUploadDir, "pdf-cache")
+		if err := os.MkdirAll(localDir, 0o755); err != nil {
+			return "", fmt.Errorf("mkdir pdf-cache: %w", err)
+		}
+		localPath := filepath.Join(localDir, fileID+".pdf")
+		if err := os.WriteFile(localPath, pdfData, 0o644); err != nil {
+			return "", fmt.Errorf("write pdf locally: %w", err)
+		}
+		pdfURL = "/uploads/library/pdf-cache/" + fileID + ".pdf"
+	}
+
+	// Сохраняем URL в кэш (non-fatal)
+	if err := s.fileRepo.SetPdfCacheURL(ctx, fileID, pdfURL); err != nil {
+		s.logger.Warn("set pdf cache url", zap.String("file_id", fileID), zap.Error(err))
+	}
+
+	return pdfURL, nil
+}
+
+// downloadFileBytes скачивает байты файла — с R2 через HTTP или из локального FS.
+func (s *FileService) downloadFileBytes(ctx context.Context, file *domain.File) ([]byte, error) {
+	if strings.HasPrefix(file.FileURL, "http") {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, file.FileURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		return io.ReadAll(resp.Body)
+	}
+	// Локальный путь (dev без R2)
+	return os.ReadFile(filepath.Join(".", file.FileURL))
 }

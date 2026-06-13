@@ -165,6 +165,8 @@ func main() {
 	api.Get("/files/:id/download", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.DownloadFile)
 	api.Get("/files/:id/preview", middleware.OptionalAuth(jwtManager), fileHandler.PreviewFile)
 	api.Get("/files/:id/text", fileHandler.GetText)
+	api.Get("/files/:id/pdf", fileHandler.GetPDF)
+	api.Post("/files/:id/re-extract", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.ReExtractText)
 	api.Post("/files/upload", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.Upload)
 	api.Post("/files", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.CreateFile)
 	api.Delete("/files/:id", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.DeleteFile)

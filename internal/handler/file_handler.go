@@ -237,6 +237,52 @@ func (h *FileHandler) GetText(c *fiber.Ctx) error {
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"text": text}, nil)
 }
 
+// POST /api/v1/files/:id/re-extract
+// Re-runs text extraction on a stored file (admin / owner use case).
+// Returns the freshly extracted text (or 204 if still empty after extraction).
+func (h *FileHandler) ReExtractText(c *fiber.Ctx) error {
+	id := c.Params("id")
+	text, err := h.fileService.ReExtractText(c.Context(), id)
+	if err != nil {
+		if err == domain.ErrFileNotFound {
+			return respondError(c, fiber.StatusNotFound, "file not found")
+		}
+		return respondError(c, fiber.StatusInternalServerError, err.Error())
+	}
+	if text == "" {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"text": text}, nil)
+}
+
+// GET /api/v1/files/:id/pdf
+//
+// Возвращает URL к PDF-версии файла. PDF отдаётся как есть.
+// Остальные форматы (docx, rtf, odt, fb2, pptx, odp) конвертируются через
+// LibreOffice headless при первом обращении; результат кэшируется в R2.
+// 503 если LibreOffice не установлен на сервере.
+func (h *FileHandler) GetPDF(c *fiber.Ctx) error {
+	id := c.Params("id")
+	pdfURL, err := h.fileService.GetOrConvertToPDF(c.Context(), id)
+	if err != nil {
+		if err == domain.ErrFileNotFound {
+			return respondError(c, fiber.StatusNotFound, "file not found")
+		}
+		// LibreOffice не установлен
+		if isUnavailableErr(err) {
+			return respondError(c, fiber.StatusServiceUnavailable, err.Error())
+		}
+		h.logger.Error("get or convert to pdf", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "pdf conversion failed: "+err.Error())
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"pdf_url": pdfURL}, nil)
+}
+
+func isUnavailableErr(err error) bool {
+	return err != nil && len(err.Error()) > 20 &&
+		err.Error()[:20] == "PDF conversion unava"
+}
+
 // GET /api/v1/files/categories
 func (h *FileHandler) GetCategories(c *fiber.Ctx) error {
 	cats, err := h.fileService.GetCategories(c.Context())

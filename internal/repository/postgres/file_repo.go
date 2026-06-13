@@ -121,6 +121,41 @@ func (r *FileRepository) GetExtractedText(ctx context.Context, id string) (strin
 	return *text, nil
 }
 
+// UpdateExtractedText saves newly extracted text for an existing file.
+func (r *FileRepository) UpdateExtractedText(ctx context.Context, id, text string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE files SET extracted_text = $1 WHERE id = $2`, text, id,
+	)
+	return err
+}
+
+// GetPdfCacheURL возвращает закэшированный URL PDF-версии файла.
+// Возвращает ("", nil) если кэша ещё нет.
+func (r *FileRepository) GetPdfCacheURL(ctx context.Context, id string) (string, error) {
+	var url *string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT pdf_cache_url FROM files WHERE id = $1`, id,
+	).Scan(&url)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrFileNotFound
+		}
+		return "", fmt.Errorf("get pdf cache url: %w", err)
+	}
+	if url == nil {
+		return "", nil
+	}
+	return *url, nil
+}
+
+// SetPdfCacheURL сохраняет URL PDF-версии после успешной конвертации.
+func (r *FileRepository) SetPdfCacheURL(ctx context.Context, id, url string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE files SET pdf_cache_url = $1 WHERE id = $2`, url, id,
+	)
+	return err
+}
+
 // Trending (LIB-6) — top files по hot-score за указанный период.
 // period: "week" (7d, default) | "month" (30d) | "all"
 func (r *FileRepository) Trending(ctx context.Context, limit int, period string) ([]*domain.File, error) {
