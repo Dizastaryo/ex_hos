@@ -104,6 +104,9 @@ func main() {
 	// Services
 	fileService := service.NewFileService(fileRepo, userStatsRepo, logger, r2Client)
 
+	// Convert existing pending files in the background (non-blocking)
+	go fileService.BatchConvertPending(context.Background())
+
 	// Handlers
 	fileHandler := handler.NewFileHandler(fileService, validate, logger)
 	readingHandler := handler.NewReadingHandler(readingRepo, validate, logger)
@@ -166,6 +169,7 @@ func main() {
 	api.Get("/files/:id/preview", middleware.OptionalAuth(jwtManager), fileHandler.PreviewFile)
 	api.Get("/files/:id/text", fileHandler.GetText)
 	api.Get("/files/:id/pdf", fileHandler.GetPDF)
+	api.Get("/files/:id/pdf-status", fileHandler.GetPdfStatus)
 	api.Post("/files/:id/re-extract", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.ReExtractText)
 	api.Post("/files/upload", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.Upload)
 	api.Post("/files", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.CreateFile)

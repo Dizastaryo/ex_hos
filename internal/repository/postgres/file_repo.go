@@ -156,6 +156,65 @@ func (r *FileRepository) SetPdfCacheURL(ctx context.Context, id, url string) err
 	return err
 }
 
+// GetPdfConversionStatus returns the current pdf_conversion_status for a file.
+func (r *FileRepository) GetPdfConversionStatus(ctx context.Context, id string) (string, error) {
+	var status string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(pdf_conversion_status, 'none') FROM files WHERE id = $1`, id,
+	).Scan(&status)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", domain.ErrFileNotFound
+		}
+		return "", fmt.Errorf("get pdf conversion status: %w", err)
+	}
+	return status, nil
+}
+
+// SetPdfConversionStatus updates pdf_conversion_status for a file.
+func (r *FileRepository) SetPdfConversionStatus(ctx context.Context, id, status string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE files SET pdf_conversion_status = $1 WHERE id = $2`, status, id,
+	)
+	return err
+}
+
+// TryClaimConversion atomically transitions pdf_conversion_status 'pending' → 'converting'.
+// Returns true if this caller won the race and should proceed with conversion.
+func (r *FileRepository) TryClaimConversion(ctx context.Context, id string) (bool, error) {
+	tag, err := r.db.Pool.Exec(ctx,
+		`UPDATE files SET pdf_conversion_status = 'converting'
+		 WHERE id = $1 AND pdf_conversion_status = 'pending'`, id,
+	)
+	if err != nil {
+		return false, fmt.Errorf("claim conversion: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// GetPendingConversions returns files queued for background PDF conversion (up to 200).
+func (r *FileRepository) GetPendingConversions(ctx context.Context) ([]*domain.File, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT id, file_url, doc_format
+		FROM files
+		WHERE pdf_conversion_status = 'pending'
+		ORDER BY created_at ASC
+		LIMIT 200`)
+	if err != nil {
+		return nil, fmt.Errorf("get pending conversions: %w", err)
+	}
+	defer rows.Close()
+	var files []*domain.File
+	for rows.Next() {
+		f := &domain.File{}
+		if err := rows.Scan(&f.ID, &f.FileURL, &f.DocFormat); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
 // Trending (LIB-6) — top files по hot-score за указанный период.
 // period: "week" (7d, default) | "month" (30d) | "all"
 func (r *FileRepository) Trending(ctx context.Context, limit int, period string) ([]*domain.File, error) {

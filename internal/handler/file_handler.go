@@ -258,9 +258,9 @@ func (h *FileHandler) ReExtractText(c *fiber.Ctx) error {
 // GET /api/v1/files/:id/pdf
 //
 // Возвращает URL к PDF-версии файла. PDF отдаётся как есть.
-// Остальные форматы (docx, rtf, odt, fb2, pptx, odp) конвертируются через
-// LibreOffice headless при первом обращении; результат кэшируется в R2.
-// 503 если LibreOffice не установлен на сервере.
+// Конвертируемые форматы (docx, rtf, odt, fb2, pptx, odp) запускают
+// фоновую конвертацию через LibreOffice; возвращает 202 пока идёт конвертация.
+// Клиент должен опросить GET /files/:id/pdf-status и повторить по готовности.
 func (h *FileHandler) GetPDF(c *fiber.Ctx) error {
 	id := c.Params("id")
 	pdfURL, err := h.fileService.GetOrConvertToPDF(c.Context(), id)
@@ -268,7 +268,12 @@ func (h *FileHandler) GetPDF(c *fiber.Ctx) error {
 		if err == domain.ErrFileNotFound {
 			return respondError(c, fiber.StatusNotFound, "file not found")
 		}
-		// LibreOffice не установлен
+		if errors.Is(err, service.ErrConversionPending) {
+			return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+				"data":  fiber.Map{"status": "converting"},
+				"error": nil,
+			})
+		}
 		if isUnavailableErr(err) {
 			return respondError(c, fiber.StatusServiceUnavailable, err.Error())
 		}
@@ -276,6 +281,25 @@ func (h *FileHandler) GetPDF(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "pdf conversion failed: "+err.Error())
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"pdf_url": pdfURL}, nil)
+}
+
+// GET /api/v1/files/:id/pdf-status
+//
+// Возвращает статус фоновой конвертации: pending | converting | done | failed | none.
+// Когда status=done, также возвращает pdf_url.
+func (h *FileHandler) GetPdfStatus(c *fiber.Ctx) error {
+	id := c.Params("id")
+	status, pdfURL, err := h.fileService.GetPdfStatus(c.Context(), id)
+	if err != nil {
+		if err == domain.ErrFileNotFound {
+			return respondError(c, fiber.StatusNotFound, "file not found")
+		}
+		return respondError(c, fiber.StatusInternalServerError, "failed to get pdf status")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{
+		"status":  status,
+		"pdf_url": pdfURL,
+	}, nil)
 }
 
 func isUnavailableErr(err error) bool {

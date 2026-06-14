@@ -15,8 +15,8 @@ import (
 )
 
 // defaultTimeout — максимальное время на конвертацию одного файла.
-// Большинство документов конвертируются за 2-5 сек; сложные PPTX — до 30 сек.
-const defaultTimeout = 60 * time.Second
+// На Windows LibreOffice холодный старт занимает 60-90 сек; ставим 5 минут с запасом.
+const defaultTimeout = 5 * time.Minute
 
 // IsAvailable возвращает true если LibreOffice установлен и доступен в PATH.
 func IsAvailable() bool {
@@ -69,11 +69,21 @@ func ConvertToPDF(ctx context.Context, srcPath string) ([]byte, error) {
 	return data, nil
 }
 
-// findBinary ищет libreoffice или soffice в PATH.
+// findBinary ищет libreoffice или soffice в PATH и стандартных путях Windows.
 func findBinary() (string, error) {
 	for _, name := range []string{"libreoffice", "soffice"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return path, nil
+		}
+	}
+	// Windows: LibreOffice не добавляется в PATH автоматически
+	windowsPaths := []string{
+		`C:\Program Files\LibreOffice\program\soffice.exe`,
+		`C:\Program Files (x86)\LibreOffice\program\soffice.exe`,
+	}
+	for _, p := range windowsPaths {
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
 		}
 	}
 	return "", fmt.Errorf("LibreOffice not found in PATH: install with 'apt-get install libreoffice'")

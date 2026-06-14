@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -19,6 +20,15 @@ import (
 	"github.com/seeu/backend/pkg/storage"
 	"go.uber.org/zap"
 )
+
+// convertibleFormats require server-side PDF conversion via LibreOffice.
+var convertibleFormats = map[string]bool{
+	"fb2": true, "docx": true, "rtf": true,
+	"odt": true, "pptx": true, "odp": true,
+}
+
+// ErrConversionPending signals that PDF conversion is in progress; caller should poll.
+var ErrConversionPending = errors.New("pdf conversion in progress")
 
 // allowedExtensions — белый список расширений для библиотеки.
 // Только читательские форматы (документы, книги, презентации).
@@ -239,6 +249,16 @@ func (s *FileService) Upload(
 	if err := s.fileRepo.Create(ctx, entity); err != nil {
 		return nil, err
 	}
+
+	// Kick off background PDF conversion for convertible formats
+	if convertibleFormats[ext] {
+		if setErr := s.fileRepo.SetPdfConversionStatus(ctx, entity.ID, "pending"); setErr != nil {
+			s.logger.Warn("set pdf_conversion_status pending", zap.Error(setErr))
+		} else {
+			go s.doConvert(entity.ID, entity.FileURL, entity.DocFormat)
+		}
+	}
+
 	return s.fileRepo.GetByID(ctx, entity.ID)
 }
 
@@ -387,9 +407,8 @@ func (s *FileService) GetCategories(ctx context.Context) ([]*domain.FileCategory
 
 // GetOrConvertToPDF возвращает URL к PDF-версии файла.
 //   - PDF: возвращает оригинальный fileUrl без конвертации.
-//   - Все остальные форматы: проверяет кэш в БД; если нет — скачивает оригинал
-//     с R2, конвертирует через LibreOffice headless, загружает PDF в R2 и
-//     сохраняет URL в pdf_cache_url.
+//   - Конвертируемые форматы: проверяет кэш; если конвертация ещё идёт —
+//     возвращает ErrConversionPending (клиент должен опросить /pdf-status).
 func (s *FileService) GetOrConvertToPDF(ctx context.Context, fileID string) (string, error) {
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -410,61 +429,137 @@ func (s *FileService) GetOrConvertToPDF(ctx context.Context, fileID string) (str
 		return cachedURL, nil
 	}
 
-	// Проверяем наличие LibreOffice
+	// Проверяем статус фоновой конвертации
+	status, err := s.fileRepo.GetPdfConversionStatus(ctx, fileID)
+	if err != nil {
+		return "", err
+	}
+	switch status {
+	case "pending", "converting":
+		return "", ErrConversionPending
+	}
+
+	// Статус 'none', 'failed' или 'done' без кэша — запускаем фоновую конвертацию
 	if !pdfconvert.IsAvailable() {
 		return "", fmt.Errorf("PDF conversion unavailable: LibreOffice not installed on server")
 	}
+	if setErr := s.fileRepo.SetPdfConversionStatus(ctx, fileID, "pending"); setErr != nil {
+		return "", setErr
+	}
+	go s.doConvert(fileID, file.FileURL, file.DocFormat)
+	return "", ErrConversionPending
+}
 
-	// Скачиваем оригинал
+// GetPdfStatus returns the conversion status and PDF URL (if done) for a file.
+func (s *FileService) GetPdfStatus(ctx context.Context, fileID string) (status, pdfURL string, err error) {
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return "", "", err
+	}
+	if file.DocFormat == "pdf" {
+		return "done", file.FileURL, nil
+	}
+	cached, err := s.fileRepo.GetPdfCacheURL(ctx, fileID)
+	if err != nil {
+		return "", "", err
+	}
+	if cached != "" {
+		return "done", cached, nil
+	}
+	st, err := s.fileRepo.GetPdfConversionStatus(ctx, fileID)
+	if err != nil {
+		return "", "", err
+	}
+	return st, "", nil
+}
+
+// BatchConvertPending converts all pending files sequentially. Run in a goroutine on startup.
+func (s *FileService) BatchConvertPending(ctx context.Context) {
+	files, err := s.fileRepo.GetPendingConversions(ctx)
+	if err != nil {
+		s.logger.Error("batch convert: get pending", zap.Error(err))
+		return
+	}
+	if len(files) == 0 {
+		s.logger.Info("batch convert: no pending files")
+		return
+	}
+	s.logger.Info("batch convert: starting", zap.Int("count", len(files)))
+	for _, f := range files {
+		if ctx.Err() != nil {
+			return
+		}
+		s.doConvert(f.ID, f.FileURL, f.DocFormat)
+	}
+	s.logger.Info("batch convert: all done")
+}
+
+// doConvert claims a pending file and converts it to PDF in the background.
+// Safe to call concurrently — only one caller will proceed per file.
+func (s *FileService) doConvert(fileID, fileURL, docFormat string) {
+	ctx := context.Background()
+
+	ok, err := s.fileRepo.TryClaimConversion(ctx, fileID)
+	if err != nil {
+		s.logger.Error("claim pdf conversion", zap.String("file_id", fileID), zap.Error(err))
+		return
+	}
+	if !ok {
+		return // someone else claimed it
+	}
+
+	s.logger.Info("pdf conversion started", zap.String("file_id", fileID), zap.String("format", docFormat))
+	pdfURL, err := s.execConvert(ctx, fileID, fileURL, docFormat)
+	if err != nil {
+		s.logger.Error("pdf conversion failed", zap.String("file_id", fileID), zap.Error(err))
+		_ = s.fileRepo.SetPdfConversionStatus(ctx, fileID, "failed")
+		return
+	}
+	if setErr := s.fileRepo.SetPdfCacheURL(ctx, fileID, pdfURL); setErr != nil {
+		s.logger.Warn("set pdf cache url", zap.String("file_id", fileID), zap.Error(setErr))
+	}
+	_ = s.fileRepo.SetPdfConversionStatus(ctx, fileID, "done")
+	s.logger.Info("pdf conversion done", zap.String("file_id", fileID))
+}
+
+// execConvert downloads the original file, converts to PDF via LibreOffice, uploads the result.
+func (s *FileService) execConvert(ctx context.Context, fileID, fileURL, docFormat string) (string, error) {
+	file := &domain.File{ID: fileID, FileURL: fileURL, DocFormat: docFormat}
+
 	srcBytes, err := s.downloadFileBytes(ctx, file)
 	if err != nil {
 		return "", fmt.Errorf("download original: %w", err)
 	}
 
-	// Записываем во временный файл (LibreOffice требует путь к файлу)
 	tmpDir, err := os.MkdirTemp("", "pdfconv_src_*")
 	if err != nil {
 		return "", fmt.Errorf("mktemp src: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	srcPath := filepath.Join(tmpDir, "input."+file.DocFormat)
+	srcPath := filepath.Join(tmpDir, "input."+docFormat)
 	if err := os.WriteFile(srcPath, srcBytes, 0o644); err != nil {
 		return "", fmt.Errorf("write src: %w", err)
 	}
 
-	// Конвертируем
 	pdfData, err := pdfconvert.ConvertToPDF(ctx, srcPath)
 	if err != nil {
 		return "", fmt.Errorf("convert: %w", err)
 	}
 
-	// Загружаем PDF в хранилище
 	r2Key := "uploads/library/pdf-cache/" + fileID + ".pdf"
-	var pdfURL string
 	if s.r2 != nil {
-		pdfURL, err = s.r2.Upload(ctx, r2Key, pdfData, "application/pdf")
-		if err != nil {
-			return "", fmt.Errorf("upload pdf to r2: %w", err)
-		}
-	} else {
-		localDir := filepath.Join(libraryUploadDir, "pdf-cache")
-		if err := os.MkdirAll(localDir, 0o755); err != nil {
-			return "", fmt.Errorf("mkdir pdf-cache: %w", err)
-		}
-		localPath := filepath.Join(localDir, fileID+".pdf")
-		if err := os.WriteFile(localPath, pdfData, 0o644); err != nil {
-			return "", fmt.Errorf("write pdf locally: %w", err)
-		}
-		pdfURL = "/uploads/library/pdf-cache/" + fileID + ".pdf"
+		return s.r2.Upload(ctx, r2Key, pdfData, "application/pdf")
 	}
-
-	// Сохраняем URL в кэш (non-fatal)
-	if err := s.fileRepo.SetPdfCacheURL(ctx, fileID, pdfURL); err != nil {
-		s.logger.Warn("set pdf cache url", zap.String("file_id", fileID), zap.Error(err))
+	localDir := filepath.Join(libraryUploadDir, "pdf-cache")
+	if err := os.MkdirAll(localDir, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir pdf-cache: %w", err)
 	}
-
-	return pdfURL, nil
+	localPath := filepath.Join(localDir, fileID+".pdf")
+	if err := os.WriteFile(localPath, pdfData, 0o644); err != nil {
+		return "", fmt.Errorf("write pdf locally: %w", err)
+	}
+	return "/uploads/library/pdf-cache/" + fileID + ".pdf", nil
 }
 
 // downloadFileBytes скачивает байты файла — с R2 через HTTP или из локального FS.
