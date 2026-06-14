@@ -76,6 +76,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
@@ -90,6 +91,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		&file.CategoryID, &file.DownloadsCount, &file.LikesCount, &file.IsPreviewable,
 		&file.PreviewURL, &file.CoverURL, &file.Description,
 		&file.PagesCount, &file.DocFormat,
+		&file.PdfConversionStatus,
 		&file.CreatedAt,
 		&file.User.ID, &file.User.Username, &file.User.FullName,
 		&file.User.AvatarURL, &file.User.IsVerified,
@@ -237,6 +239,7 @@ func (r *FileRepository) Trending(ctx context.Context, limit int, period string)
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
@@ -263,6 +266,7 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
@@ -361,6 +365,7 @@ func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
@@ -497,6 +502,7 @@ func scanFiles(rows interface {
 			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
 			&f.PreviewURL, &f.CoverURL, &f.Description,
 			&f.PagesCount, &f.DocFormat,
+			&f.PdfConversionStatus,
 			&f.CreatedAt,
 			&f.User.ID, &f.User.Username, &f.User.FullName,
 			&f.User.AvatarURL, &f.User.IsVerified,

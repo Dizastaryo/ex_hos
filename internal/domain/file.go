@@ -36,7 +36,8 @@ type File struct {
 	Description    string    `json:"description"`
 	PagesCount     int       `json:"pages_count"`
 	DocFormat      string    `json:"doc_format"`
-	PdfCacheURL    string    `json:"pdf_cache_url,omitempty"`
+	PdfCacheURL         string `json:"pdf_cache_url,omitempty"`
+	PdfConversionStatus string `json:"pdf_conversion_status,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 
 	User     *UserShort    `json:"user,omitempty"`
