@@ -671,7 +671,7 @@ func (r *ReadingRepository) DeleteFileNote(ctx context.Context, userID, fileID s
 
 // ─── Page Reading Progress (honest reading tracker) ──────────────────────────
 
-const PageReadThreshold = 15 // seconds to count a page as "read"
+const PageReadThreshold = 40 // seconds to count a page as "read"
 
 // GetPageProgress returns all page reading times for a user+file.
 // Result: map[pageNumber]secondsSpent
