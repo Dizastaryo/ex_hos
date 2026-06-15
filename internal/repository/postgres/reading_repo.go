@@ -184,9 +184,14 @@ func (r *ReadingRepository) GetReadingStats(ctx context.Context, userID string) 
 		"last_read_at":    nil,
 	}
 
-	// Counts by status
+	// Counts by status (only books category)
 	rows, err := r.db.Pool.Query(ctx,
-		`SELECT status, COUNT(*) FROM reading_status WHERE user_id = $1 GROUP BY status`, userID)
+		`SELECT rs.status, COUNT(*)
+		 FROM reading_status rs
+		 JOIN files f ON f.id = rs.file_id
+		 JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
+		 WHERE rs.user_id = $1
+		 GROUP BY rs.status`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("reading stats statuses: %w", err)
 	}
@@ -224,13 +229,15 @@ func (r *ReadingRepository) GetReadingStats(ctx context.Context, userID string) 
 		stats["last_read_at"] = *lastReadAt
 	}
 
-	// Total pages read (sum of pages from finished books)
+	// Total pages read (only books, from page_reading_progress with threshold)
 	var totalPages int
 	err = r.db.Pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(f.pages_count), 0)
-		 FROM reading_status rs
-		 JOIN files f ON f.id = rs.file_id
-		 WHERE rs.user_id = $1 AND rs.status = 'done'`, userID).Scan(&totalPages)
+		`SELECT COUNT(*)
+		 FROM page_reading_progress prp
+		 JOIN files f ON f.id = prp.file_id
+		 JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
+		 WHERE prp.user_id = $1 AND prp.seconds_spent >= $2`,
+		userID, PageReadThreshold).Scan(&totalPages)
 	if err == nil {
 		stats["total_pages_read"] = totalPages
 	}
@@ -259,10 +266,13 @@ func (r *ReadingRepository) GetReadingStats(ctx context.Context, userID string) 
 		stats["total_viewed"] = totalViewed
 	}
 
-	// Reading streak (consecutive calendar days with reading_progress activity)
+	// Reading streak (consecutive calendar days — only books)
 	streakRows, streakErr := r.db.Pool.Query(ctx,
-		`SELECT DISTINCT DATE(last_read_at AT TIME ZONE 'UTC')
-		 FROM reading_progress WHERE user_id = $1
+		`SELECT DISTINCT DATE(rp.last_read_at AT TIME ZONE 'UTC')
+		 FROM reading_progress rp
+		 JOIN files f ON f.id = rp.file_id
+		 JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
+		 WHERE rp.user_id = $1
 		 ORDER BY 1 DESC`, userID)
 	if streakErr == nil {
 		defer streakRows.Close()
@@ -396,12 +406,19 @@ func (r *ReadingRepository) GetReadingLeaderboard(ctx context.Context, metric st
 	var query string
 	switch metric {
 	case "pages":
-		// Count actually read pages (seconds_spent >= threshold) from page_reading_progress
+		// Count actually read pages (seconds_spent >= threshold) — only books
 		query = fmt.Sprintf(`
 			SELECT u.id, u.username, u.full_name, COALESCE(u.avatar_url, ''),
-			       COALESCE((SELECT COUNT(*) FROM reading_status rs2 WHERE rs2.user_id = u.id AND rs2.status = 'done'), 0) AS books_done,
+			       COALESCE((
+			           SELECT COUNT(*) FROM reading_status rs2
+			           JOIN files f2 ON f2.id = rs2.file_id
+			           JOIN file_categories fc2 ON fc2.id = f2.category_id AND fc2.slug = 'books'
+			           WHERE rs2.user_id = u.id AND rs2.status = 'done'
+			       ), 0) AS books_done,
 			       COUNT(prp.page_number) AS total_pages
 			FROM page_reading_progress prp
+			JOIN files f ON f.id = prp.file_id
+			JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
 			JOIN users u ON u.id = prp.user_id
 			WHERE prp.seconds_spent >= %d
 			GROUP BY u.id, u.username, u.full_name, u.avatar_url
@@ -415,6 +432,7 @@ func (r *ReadingRepository) GetReadingLeaderboard(ctx context.Context, metric st
 			       COALESCE(SUM(f.pages_count), 0) AS total_pages
 			FROM reading_status rs
 			JOIN files f ON f.id = rs.file_id
+			JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
 			JOIN users u ON u.id = rs.user_id
 			WHERE rs.status = 'done'
 			GROUP BY u.id, u.username, u.full_name, u.avatar_url
@@ -457,9 +475,11 @@ func (r *ReadingRepository) getStreakLeaderboard(ctx context.Context, limit int)
 	// Then compute streak by checking consecutive day gaps.
 	rows, err := r.db.Pool.Query(ctx, `
 		WITH user_days AS (
-			SELECT user_id, DATE(last_read_at AT TIME ZONE 'UTC') AS day
-			FROM reading_progress
-			GROUP BY user_id, day
+			SELECT rp.user_id, DATE(rp.last_read_at AT TIME ZONE 'UTC') AS day
+			FROM reading_progress rp
+			JOIN files f ON f.id = rp.file_id
+			JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
+			GROUP BY rp.user_id, day
 		),
 		ordered AS (
 			SELECT user_id, day,
@@ -491,7 +511,12 @@ func (r *ReadingRepository) getStreakLeaderboard(ctx context.Context, limit int)
 		)
 		SELECT u.id, u.username, u.full_name, COALESCE(u.avatar_url, ''),
 		       cs.streak_len,
-		       COALESCE((SELECT COUNT(*) FROM reading_status rs WHERE rs.user_id = u.id AND rs.status = 'done'), 0)
+		       COALESCE((
+		           SELECT COUNT(*) FROM reading_status rs
+		           JOIN files f2 ON f2.id = rs.file_id
+		           JOIN file_categories fc2 ON fc2.id = f2.category_id AND fc2.slug = 'books'
+		           WHERE rs.user_id = u.id AND rs.status = 'done'
+		       ), 0)
 		FROM current_streaks cs
 		JOIN users u ON u.id = cs.user_id
 		ORDER BY cs.streak_len DESC, u.username
@@ -599,10 +624,12 @@ func (r *ReadingRepository) GetReadingActivity(ctx context.Context, userID strin
 			'1 day'::interval
 		) AS gs(day)
 		LEFT JOIN (
-			SELECT DATE(last_read_at AT TIME ZONE 'UTC') AS day, COUNT(DISTINCT file_id) AS cnt
-			FROM reading_progress
-			WHERE user_id = $1
-			  AND last_read_at >= NOW() - $2 * INTERVAL '1 day'
+			SELECT DATE(rp.last_read_at AT TIME ZONE 'UTC') AS day, COUNT(DISTINCT rp.file_id) AS cnt
+			FROM reading_progress rp
+			JOIN files f ON f.id = rp.file_id
+			JOIN file_categories fc ON fc.id = f.category_id AND fc.slug = 'books'
+			WHERE rp.user_id = $1
+			  AND rp.last_read_at >= NOW() - $2 * INTERVAL '1 day'
 			GROUP BY 1
 		) a ON a.day = gs.day
 		ORDER BY gs.day ASC`,
@@ -672,6 +699,14 @@ func (r *ReadingRepository) DeleteFileNote(ctx context.Context, userID, fileID s
 // ─── Page Reading Progress (honest reading tracker) ──────────────────────────
 
 const PageReadThreshold = 40 // seconds to count a page as "read"
+
+// booksCategorySlug is the slug used to identify "book" files in file_categories.
+// Only books count toward reading stats, leaderboards, and streaks.
+const booksCategorySlug = "books"
+
+// booksJoin is a SQL fragment that filters reading_status/reading_progress rows
+// to only include files in the "books" category.
+const booksFileJoin = `JOIN files _bf ON _bf.id = %s JOIN file_categories _bc ON _bc.id = _bf.category_id AND _bc.slug = 'books'`
 
 // GetPageProgress returns all page reading times for a user+file.
 // Result: map[pageNumber]secondsSpent
