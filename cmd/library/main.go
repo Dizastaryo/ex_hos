@@ -102,7 +102,7 @@ func main() {
 	}
 
 	// Services
-	fileService := service.NewFileService(fileRepo, userStatsRepo, logger, r2Client)
+	fileService := service.NewFileService(fileRepo, readingRepo, userStatsRepo, logger, r2Client)
 
 	// Convert existing pending files in the background (non-blocking)
 	go fileService.BatchConvertPending(context.Background())
@@ -162,23 +162,30 @@ func main() {
 
 	// Files
 	api.Get("/files/categories", fileHandler.GetCategories)
-	api.Get("/files/trending", fileHandler.Trending)
+	api.Get("/files/trending", middleware.OptionalAuth(jwtManager), fileHandler.Trending)
+	api.Get("/files/authors/popular", fileHandler.PopularAuthors)
+	api.Get("/files/stats/formats", fileHandler.FormatStats)
+	api.Get("/files/suggestions", fileHandler.SearchSuggestions)
+	api.Get("/files/social-picks", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.SocialPicks)
 	api.Get("/files", middleware.OptionalAuth(jwtManager), fileHandler.ListFiles)
 	api.Get("/files/:id", middleware.OptionalAuth(jwtManager), fileHandler.GetFile)
 	api.Get("/files/:id/download", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.DownloadFile)
 	api.Get("/files/:id/preview", middleware.OptionalAuth(jwtManager), fileHandler.PreviewFile)
-	api.Get("/files/:id/text", fileHandler.GetText)
-	api.Get("/files/:id/pdf", fileHandler.GetPDF)
-	api.Get("/files/:id/pdf-status", fileHandler.GetPdfStatus)
+	api.Get("/files/:id/text", middleware.OptionalAuth(jwtManager), fileHandler.GetText)
+	api.Get("/files/:id/pdf", middleware.OptionalAuth(jwtManager), fileHandler.GetPDF)
+	api.Get("/files/:id/pdf-status", middleware.OptionalAuth(jwtManager), fileHandler.GetPdfStatus)
 	api.Post("/files/:id/re-extract", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.ReExtractText)
 	api.Post("/files/upload", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.Upload)
 	api.Post("/files", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.CreateFile)
+	api.Patch("/files/:id", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.UpdateFile)
 	api.Delete("/files/:id", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.DeleteFile)
+	api.Post("/files/:id/view", middleware.OptionalAuth(jwtManager), fileHandler.TrackView)
+	api.Put("/files/:id/rating", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.RateFile)
+	api.Get("/files/:id/rating", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.GetUserRating)
+	api.Get("/files/:id/reviews", middleware.OptionalAuth(jwtManager), fileHandler.GetFileReviews)
+	api.Get("/files/:id/related", middleware.OptionalAuth(jwtManager), fileHandler.GetRelatedFiles)
 	api.Post("/files/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.LikeFile)
 	api.Delete("/files/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), fileHandler.UnlikeFile)
-
-	// User files
-	api.Get("/users/:id/files", middleware.OptionalAuth(jwtManager), fileHandler.GetUserFiles)
 
 	// Reading progress, bookmarks, status (all require auth)
 	auth := middleware.Auth(jwtManager, sessionStore, userRepo)
@@ -190,7 +197,26 @@ func main() {
 	api.Get("/files/:id/reading-status", auth, readingHandler.GetReadingStatus)
 	api.Put("/files/:id/reading-status", auth, readingHandler.UpsertReadingStatus)
 	api.Delete("/files/:id/reading-status", auth, readingHandler.DeleteReadingStatus)
+	api.Get("/files/:id/notes", auth, readingHandler.GetFileNote)
+	api.Put("/files/:id/notes", auth, readingHandler.UpsertFileNote)
+	api.Delete("/files/:id/notes", auth, readingHandler.DeleteFileNote)
+	api.Get("/files/:id/pages-progress", auth, readingHandler.GetPageProgress)
+	api.Put("/files/:id/pages-progress", auth, readingHandler.UpsertPageProgress)
+
+	// /users/me/* MUST be registered BEFORE /users/:id/* to avoid wildcard shadowing
+	api.Get("/users/me/reading-stats", auth, readingHandler.GetReadingStats)
 	api.Get("/users/me/reading-list", auth, readingHandler.GetReadingList)
+	api.Get("/users/me/recently-read", auth, readingHandler.GetRecentlyRead)
+	api.Get("/users/me/recommendations", auth, fileHandler.Recommendations)
+	api.Get("/users/me/recently-viewed", auth, fileHandler.GetRecentlyViewed)
+	api.Get("/reading/leaderboard", middleware.OptionalAuth(jwtManager), readingHandler.GetLeaderboard)
+	api.Get("/reading/activity", auth, readingHandler.GetReadingActivity)
+	api.Get("/users/me/reading-goal", auth, readingHandler.GetReadingGoal)
+	api.Put("/users/me/reading-goal", auth, readingHandler.UpsertReadingGoal)
+	api.Delete("/users/me/reading-goal", auth, readingHandler.DeleteReadingGoal)
+
+	// User files (wildcard :id — must come after /users/me/*)
+	api.Get("/users/:id/files", middleware.OptionalAuth(jwtManager), fileHandler.GetUserFiles)
 
 	// File stats (owner only)
 	api.Get("/files/:id/stats", auth, collectionHandler.GetFileStats)
