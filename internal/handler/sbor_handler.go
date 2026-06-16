@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"strings"
+	"time"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/seeu/backend/internal/domain"
@@ -47,8 +50,21 @@ func (h *SborHandler) List(c *fiber.Ctx) error {
 	typeFilter := c.Query("type")
 	catFilter := c.Query("category")
 	cityFilter := c.Query("city") // пустая строка = без фильтра по городу
+	qFilter := strings.TrimSpace(c.Query("q"))
 
-	items, meta, err := h.svc.List(c.Context(), userID, typeFilter, catFilter, cityFilter, page, limit)
+	var dateFrom, dateTo *time.Time
+	if v := c.Query("date_from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			dateFrom = &t
+		}
+	}
+	if v := c.Query("date_to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			dateTo = &t
+		}
+	}
+
+	items, meta, err := h.svc.List(c.Context(), userID, typeFilter, catFilter, cityFilter, qFilter, dateFrom, dateTo, page, limit)
 	if err != nil {
 		h.logger.Error("list sbory", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to list sbory")
@@ -259,6 +275,9 @@ func (h *SborHandler) ToggleBookmark(c *fiber.Ctx) error {
 	id := c.Params("id")
 	saved, err := h.svc.ToggleBookmark(c.Context(), userID, id)
 	if err != nil {
+		if err == domain.ErrForbidden {
+			return respondError(c, fiber.StatusForbidden, "host cannot bookmark own sbor")
+		}
 		h.logger.Error("toggle sbor bookmark", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to toggle bookmark")
 	}
@@ -293,4 +312,22 @@ func (h *SborHandler) Cancel(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to cancel sbor")
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "sbor cancelled"}, nil)
+}
+
+// GET /api/v1/sbory/:id/members
+func (h *SborHandler) GetMembers(c *fiber.Ctx) error {
+	id := c.Params("id")
+	userID := middleware.GetUserID(c)
+	members, err := h.svc.ListMembers(c.Context(), id, userID)
+	if err != nil {
+		if err == domain.ErrSborNotFound {
+			return respondError(c, fiber.StatusNotFound, "sbor not found")
+		}
+		if err == domain.ErrForbidden {
+			return respondError(c, fiber.StatusForbidden, "access denied")
+		}
+		h.logger.Error("get sbor members", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get members")
+	}
+	return respondSuccess(c, fiber.StatusOK, members, nil)
 }

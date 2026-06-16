@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS file_ratings;
+ALTER TABLE files DROP COLUMN IF EXISTS ratings_count;
+ALTER TABLE files DROP COLUMN IF EXISTS ratings_sum;

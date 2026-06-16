@@ -268,7 +268,7 @@ func main() {
 	aiHandler := handler.NewAIHandlerWithDeps(aiMasksRepo, aiStylRepo, logger)
 	dailyPromptHandler := handler.NewDailyPromptHandler()
 	reportHandler := handler.NewReportHandler(reportService, validate, logger)
-	adminHandler := handler.NewAdminHandler(userRepo, reportRepo, auditRepo, audioRepo, deviceRepo, userService, deviceService, logger)
+	adminHandler := handler.NewAdminHandler(db.Pool, jwtManager, userRepo, reportRepo, auditRepo, audioRepo, deviceRepo, userService, deviceService, logger)
 	blockHandler := handler.NewBlockHandler(blockService, logger)
 	restrictionHandler := handler.NewRestrictionHandler(restrictionService, logger)
 	closeFriendsHandler := handler.NewCloseFriendsHandler(closeFriendsService, logger)
@@ -283,6 +283,7 @@ func main() {
 	stickerRepo := postgres.NewStickerRepository(db)
 	stickerHandler := handler.NewStickerHandler(stickerRepo, r2Client, logger)
 	scannerService := service.NewScannerService(scannerRepo, userRepo, notifRepo, userStatsRepo, wsHub, logger)
+	scannerService.SetChatRepo(chatRepo)
 	scannerHandler := handler.NewScannerHandler(scannerService, logger)
 
 	// Fiber app
@@ -631,14 +632,32 @@ func main() {
 	api.Post("/invites", middleware.Auth(jwtManager, sessionStore, userRepo), inviteHandler.Create)
 	api.Get("/invites/:code", inviteHandler.Lookup) // public — shown on auth screen
 
-	// Scanner (BLE bracelet likes)
+	// Scanner (BLE proximity waves)
 	scanner := api.Group("/scanner", middleware.Auth(jwtManager, sessionStore, userRepo))
+	// v2: waves + resolve
+	scanner.Post("/wave", scannerHandler.PostWave)
+	scanner.Get("/resolve/:deviceHash", scannerHandler.ResolveScanProfile)
+	scanner.Post("/resolve", scannerHandler.ResolveScanProfiles)
+	scanner.Get("/waves/received", scannerHandler.GetReceivedWaves)
+	scanner.Get("/waves/sent", scannerHandler.GetSentWaves)
+	// legacy compat (old clients still call /like endpoints)
 	scanner.Post("/like", scannerHandler.PostLike)
 	scanner.Delete("/like/:deviceHash", scannerHandler.DeleteLike)
 	scanner.Get("/likes/received", scannerHandler.GetReceivedLikes)
 	scanner.Get("/likes/sent", scannerHandler.GetSentLikes)
 	scanner.Get("/likes/unseen-count", scannerHandler.UnseenLikesCount)
 	scanner.Post("/likes/mark-seen", scannerHandler.MarkLikesSeen)
+	// matches + heartbeat
+	scanner.Get("/matches", scannerHandler.GetMatches)
+	scanner.Post("/heartbeat", scannerHandler.PostHeartbeat)
+
+	// Connect QR (auth-protected, under /connect)
+	connect := api.Group("/connect", middleware.Auth(jwtManager, sessionStore, userRepo))
+	connect.Post("/qr", scannerHandler.GenerateConnectQR)
+	connect.Post("/accept", scannerHandler.AcceptConnect)
+
+	// Admin login — no auth required (issues JWT for admin accounts).
+	api.Post("/admin/login", adminHandler.AdminLogin)
 
 	// Admin routes — for the admin.seeu.kz front-end. AdminOnly is applied AFTER
 	// Auth, so unauthenticated calls get 401 and authenticated non-admins get 403.

@@ -110,6 +110,28 @@ func (s *DeviceService) UnbindDevice(ctx context.Context, userID string) error {
 	return s.userRepo.SetDeviceIDs(ctx, userID, "", "")
 }
 
+// ── Private Whitelist ─────────────────────────────────────────────────────────
+
+// GetPrivateWhitelist возвращает текущий whitelist пользователя.
+func (s *DeviceService) GetPrivateWhitelist(ctx context.Context, ownerID string) ([]*domain.PrivateWhitelistEntry, error) {
+	return s.deviceRepo.GetPrivateWhitelist(ctx, ownerID)
+}
+
+// SetPrivateWhitelist заменяет whitelist на userIDs.
+// Фильтрует: в whitelist попадают только взаимные подписчики.
+// Пустой userIDs = очистить whitelist (никто не видит в private mode).
+func (s *DeviceService) SetPrivateWhitelist(ctx context.Context, ownerID string, userIDs []string) error {
+	if len(userIDs) == 0 {
+		return s.deviceRepo.SetPrivateWhitelist(ctx, ownerID, nil)
+	}
+	// Оставляем только взаимных подписчиков — нельзя добавить чужого
+	mutuals, err := s.deviceRepo.FilterMutualFollowers(ctx, ownerID, userIDs)
+	if err != nil {
+		return fmt.Errorf("filter mutuals: %w", err)
+	}
+	return s.deviceRepo.SetPrivateWhitelist(ctx, ownerID, mutuals)
+}
+
 // deriveHex вычисляет HMAC-SHA256(secret, serial+suffix) и возвращает первые 8 байт в hex (16 символов).
 func (s *DeviceService) deriveHex(serial, suffix string) string {
 	mac := hmac.New(sha256.New, []byte(s.secret))

@@ -9,6 +9,8 @@ type Collection struct {
 	Description string    `json:"description"`
 	CoverFileID string    `json:"cover_file_id,omitempty"`
 	FilesCount  int       `json:"files_count"`
+	// CoverURLs — до 4 обложек файлов коллекции (для 2×2 коллажа).
+	CoverURLs   []string  `json:"cover_urls,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 

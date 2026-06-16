@@ -126,6 +126,7 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 	defer rows.Close()
 
 	var result []*domain.Room
+	idxByID := make(map[string]int)
 	for rows.Next() {
 		room := &domain.Room{}
 		if err := rows.Scan(
@@ -135,14 +136,106 @@ func (r *RoomRepository) List(ctx context.Context, viewerID string, limit, offse
 		); err != nil {
 			return nil, err
 		}
-		// Load a few participants for preview (avatar stack in UI)
-		room.Participants = r.getParticipantsLimit(ctx, room.ID, 5)
-		room.LastMessage, room.LastSenderUsername, room.LastMessageAt = r.getLastMessage(ctx, room.ID)
-		// Voice count for list preview
-		vids, _ := r.GetVoiceParticipantIDs(ctx, room.ID)
-		room.VoiceCount = len(vids)
+		idxByID[room.ID] = len(result)
 		result = append(result, room)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(result) == 0 {
+		return result, nil
+	}
+
+	roomIDs := make([]string, len(result))
+	for i, rm := range result {
+		roomIDs[i] = rm.ID
+	}
+
+	// Batch 1: first 5 participants per room for avatar-stack preview.
+	pRows, err := r.db.Pool.Query(ctx, `
+		SELECT rp.room_id, rp.user_id, u.full_name, u.username, COALESCE(u.avatar_url,''), rp.is_muted
+		FROM room_participants rp
+		JOIN users u ON u.id = rp.user_id
+		WHERE rp.room_id = ANY($1)
+		ORDER BY rp.room_id, rp.joined_at`, roomIDs)
+	if err == nil {
+		defer pRows.Close()
+		counts := make(map[string]int, len(result))
+		for pRows.Next() {
+			var roomID string
+			p := domain.RoomParticipant{}
+			if err := pRows.Scan(&roomID, &p.UserID, &p.FullName, &p.Username, &p.AvatarURL, &p.IsMuted); err != nil {
+				continue
+			}
+			if counts[roomID] < 5 {
+				counts[roomID]++
+				result[idxByID[roomID]].Participants = append(result[idxByID[roomID]].Participants, p)
+			}
+		}
+	}
+
+	// Batch 2: last message per room.
+	lmRows, err := r.db.Pool.Query(ctx, `
+		SELECT DISTINCT ON (rm.room_id)
+		       rm.room_id, rm.text, rm.kind, u.username, rm.created_at
+		FROM room_messages rm
+		JOIN users u ON u.id = rm.sender_id
+		WHERE rm.room_id = ANY($1)
+		ORDER BY rm.room_id, rm.created_at DESC`, roomIDs)
+	if err == nil {
+		defer lmRows.Close()
+		for lmRows.Next() {
+			var roomID, text, kind, username string
+			var at time.Time
+			if err := lmRows.Scan(&roomID, &text, &kind, &username, &at); err != nil {
+				continue
+			}
+			// Resolve human-readable preview for non-text kinds.
+			if text == "" {
+				switch kind {
+				case "sticker":
+					text = "[Стикер]"
+				case "image":
+					text = "[Изображение]"
+				case "video":
+					text = "[Видео]"
+				case "audio":
+					text = "[Аудио]"
+				case "voice":
+					text = "[Голосовое сообщение]"
+				case "file":
+					text = "[Файл]"
+				default:
+					if kind != "" {
+						text = "[" + kind + "]"
+					}
+				}
+			}
+			rm := result[idxByID[roomID]]
+			rm.LastMessage = text
+			rm.LastSenderUsername = username
+			rm.LastMessageAt = &at
+		}
+	}
+
+	// Batch 3: voice participant counts.
+	vcRows, err := r.db.Pool.Query(ctx, `
+		SELECT room_id, COUNT(*)::int
+		FROM room_voice_sessions
+		WHERE room_id = ANY($1)
+		GROUP BY room_id`, roomIDs)
+	if err == nil {
+		defer vcRows.Close()
+		for vcRows.Next() {
+			var roomID string
+			var cnt int
+			if err := vcRows.Scan(&roomID, &cnt); err != nil {
+				continue
+			}
+			result[idxByID[roomID]].VoiceCount = cnt
+		}
+	}
+
 	return result, nil
 }
 
@@ -164,23 +257,31 @@ func (r *RoomRepository) Join(ctx context.Context, roomID, userID string) error 
 }
 
 // InviteMember sends a pending invitation. Only admin/creator may invite.
-// Invitee must be a mutual follower with the inviter.
+// Invitee must be a mutual follower with the room creator (not just the inviter),
+// so an admin cannot bypass the creator's social graph.
 // Creates a pending invite row; the invitee must accept to join.
 func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, inviteeID string) error {
+	// Fetch creatorID and check inviter permission in one query.
+	var creatorID string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT creator_id FROM rooms WHERE id=$1`, roomID,
+	).Scan(&creatorID)
+	if err == pgx.ErrNoRows {
+		return domain.ErrRoomNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("invite member check: %w", err)
+	}
 	if !r.isAdminOrCreator(ctx, roomID, inviterID) {
-		var exists bool
-		_ = r.db.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1)`, roomID).Scan(&exists)
-		if !exists {
-			return domain.ErrRoomNotFound
-		}
 		return domain.ErrForbidden
 	}
-	// Mutual follow check
+	// Mutual follow check against the room CREATOR, not the inviter.
+	// This prevents an admin from inviting strangers unknown to the creator.
 	var mutual bool
 	_ = r.db.Pool.QueryRow(ctx, `
 		SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id=$1 AND following_id=$2)
 		   AND EXISTS(SELECT 1 FROM follows WHERE follower_id=$2 AND following_id=$1)`,
-		inviterID, inviteeID).Scan(&mutual)
+		creatorID, inviteeID).Scan(&mutual)
 	if !mutual {
 		return domain.ErrNotMutualFollow
 	}
@@ -193,7 +294,7 @@ func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, in
 		return domain.ErrAlreadyInvited
 	}
 	// Upsert invite: re-invite after decline resets to pending.
-	_, err := r.db.Pool.Exec(ctx, `
+	_, err = r.db.Pool.Exec(ctx, `
 		INSERT INTO room_invites (room_id, inviter_id, invitee_id)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (room_id, invitee_id) DO UPDATE
@@ -204,13 +305,24 @@ func (r *RoomRepository) InviteMember(ctx context.Context, roomID, inviterID, in
 }
 
 // AcceptInvite accepts a pending invite: adds the user to room_participants.
+// Вся операция выполняется в одной транзакции с SELECT FOR UPDATE на строке
+// инвайта, чтобы исключить race condition при двойном нажатии «Принять»:
+// второй конкурентный запрос заблокируется на FOR UPDATE, увидит статус
+// 'accepted' и вернёт ErrRoomNotFound (0 rows from UPDATE).
 func (r *RoomRepository) AcceptInvite(ctx context.Context, inviteID, userID string) (*domain.RoomInvite, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	var inv domain.RoomInvite
-	err := r.db.Pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		SELECT ri.id, ri.room_id, r.name, ri.inviter_id
 		FROM room_invites ri
 		JOIN rooms r ON r.id = ri.room_id
-		WHERE ri.id=$1 AND ri.invitee_id=$2 AND ri.status='pending'`,
+		WHERE ri.id=$1 AND ri.invitee_id=$2 AND ri.status='pending'
+		FOR UPDATE OF ri`,
 		inviteID, userID).Scan(&inv.ID, &inv.RoomID, &inv.RoomName, &inv.InviterID)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrRoomNotFound
@@ -218,14 +330,21 @@ func (r *RoomRepository) AcceptInvite(ctx context.Context, inviteID, userID stri
 	if err != nil {
 		return nil, err
 	}
-	if _, err = r.db.Pool.Exec(ctx,
+
+	if _, err = tx.Exec(ctx,
 		`UPDATE room_invites SET status='accepted' WHERE id=$1`, inviteID); err != nil {
 		return nil, err
 	}
-	_, err = r.db.Pool.Exec(ctx,
+	if _, err = tx.Exec(ctx,
 		`INSERT INTO room_participants (room_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-		inv.RoomID, userID)
-	return &inv, err
+		inv.RoomID, userID); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return &inv, nil
 }
 
 // DeclineInvite marks a pending invite as declined.
@@ -337,6 +456,14 @@ func (r *RoomRepository) RemoveMember(ctx context.Context, roomID, requesterID, 
 		`DELETE FROM room_participants WHERE room_id=$1 AND user_id=$2`,
 		roomID, targetID,
 	)
+	if err != nil {
+		return err
+	}
+	// Also evict from any active voice session so the participant list stays consistent.
+	_, err = r.db.Pool.Exec(ctx,
+		`DELETE FROM room_voice_sessions WHERE room_id=$1 AND user_id=$2`,
+		roomID, targetID,
+	)
 	return err
 }
 
@@ -410,6 +537,23 @@ func (r *RoomRepository) SetMuted(ctx context.Context, roomID, userID string, mu
 	return err
 }
 
+// ToggleMute atomically flips is_muted and returns the new value.
+// A single UPDATE…RETURNING avoids the read-modify-write race condition.
+func (r *RoomRepository) ToggleMute(ctx context.Context, roomID, userID string) (bool, error) {
+	var newMuted bool
+	err := r.db.Pool.QueryRow(ctx,
+		`UPDATE room_participants
+		    SET is_muted = NOT is_muted
+		  WHERE room_id=$1 AND user_id=$2
+		  RETURNING is_muted`,
+		roomID, userID,
+	).Scan(&newMuted)
+	if err == pgx.ErrNoRows {
+		return false, domain.ErrNotInRoom
+	}
+	return newMuted, err
+}
+
 func (r *RoomRepository) IsMuted(ctx context.Context, roomID, userID string) (bool, error) {
 	var muted bool
 	err := r.db.Pool.QueryRow(ctx,
@@ -420,6 +564,16 @@ func (r *RoomRepository) IsMuted(ctx context.Context, roomID, userID string) (bo
 		return false, domain.ErrNotInRoom
 	}
 	return muted, err
+}
+
+// IsParticipant returns true if the user is a member of the room.
+func (r *RoomRepository) IsParticipant(ctx context.Context, roomID, userID string) (bool, error) {
+	var exists bool
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM room_participants WHERE room_id=$1 AND user_id=$2)`,
+		roomID, userID,
+	).Scan(&exists)
+	return exists, err
 }
 
 // ─── Update ───────────────────────────────────────────────────────
@@ -435,7 +589,12 @@ func (r *RoomRepository) UpdateRoom(ctx context.Context, roomID, requesterID str
 		return domain.ErrForbidden
 	}
 	_, err := r.db.Pool.Exec(ctx,
-		`UPDATE rooms SET name=$2, description=$3, cover_url=$4, updated_at=now() WHERE id=$1`,
+		`UPDATE rooms
+		    SET name        = COALESCE($2, name),
+		        description = COALESCE($3, description),
+		        cover_url   = COALESCE($4, cover_url),
+		        updated_at  = now()
+		  WHERE id=$1`,
 		roomID, req.Name, req.Description, req.CoverURL,
 	)
 	return err
@@ -507,6 +666,14 @@ func (r *RoomRepository) Close(ctx context.Context, roomID string) error {
 		`UPDATE rooms SET is_active=false, updated_at=now() WHERE id=$1`,
 		roomID,
 	)
+	if err != nil {
+		return err
+	}
+	// Evict all voice participants when the room is closed.
+	_, err = r.db.Pool.Exec(ctx,
+		`DELETE FROM room_voice_sessions WHERE room_id=$1`,
+		roomID,
+	)
 	return err
 }
 
@@ -534,19 +701,37 @@ func (r *RoomRepository) SendMessage(ctx context.Context, roomID, senderID, text
 	return msg, nil
 }
 
-func (r *RoomRepository) GetMessages(ctx context.Context, roomID string, limit, offset int) ([]*domain.RoomMessage, error) {
-	rows, err := r.db.Pool.Query(ctx, `
-		SELECT m.id, m.room_id, m.sender_id, m.text,
-		       COALESCE(m.kind,'text'), COALESCE(m.attached_media_url,''),
-		       m.created_at,
-		       u.full_name, u.username, COALESCE(u.avatar_url,'')
-		FROM room_messages m
-		JOIN users u ON u.id = m.sender_id
-		WHERE m.room_id=$1
-		ORDER BY m.created_at DESC
-		LIMIT $2 OFFSET $3`,
-		roomID, limit, offset,
-	)
+func (r *RoomRepository) GetMessages(ctx context.Context, roomID string, limit, offset int, q string) ([]*domain.RoomMessage, error) {
+	var rows pgx.Rows
+	var err error
+	if q != "" {
+		// Full-text search with pg_trgm: ILIKE is good enough for < 100k messages per room.
+		rows, err = r.db.Pool.Query(ctx, `
+			SELECT m.id, m.room_id, m.sender_id, m.text,
+			       COALESCE(m.kind,'text'), COALESCE(m.attached_media_url,''),
+			       m.created_at,
+			       u.full_name, u.username, COALESCE(u.avatar_url,'')
+			FROM room_messages m
+			JOIN users u ON u.id = m.sender_id
+			WHERE m.room_id=$1 AND m.text ILIKE '%' || $4 || '%'
+			ORDER BY m.created_at DESC
+			LIMIT $2 OFFSET $3`,
+			roomID, limit, offset, q,
+		)
+	} else {
+		rows, err = r.db.Pool.Query(ctx, `
+			SELECT m.id, m.room_id, m.sender_id, m.text,
+			       COALESCE(m.kind,'text'), COALESCE(m.attached_media_url,''),
+			       m.created_at,
+			       u.full_name, u.username, COALESCE(u.avatar_url,'')
+			FROM room_messages m
+			JOIN users u ON u.id = m.sender_id
+			WHERE m.room_id=$1
+			ORDER BY m.created_at DESC
+			LIMIT $2 OFFSET $3`,
+			roomID, limit, offset,
+		)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get room messages: %w", err)
 	}
@@ -564,11 +749,107 @@ func (r *RoomRepository) GetMessages(ctx context.Context, roomID string, limit, 
 		}
 		result = append(result, msg)
 	}
-	// Reverse so oldest first
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
+	// Reverse so oldest-first (for non-search queries preserves conversation order).
+	if q == "" {
+		for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+			result[i], result[j] = result[j], result[i]
+		}
 	}
+	// Batch-load reactions. viewerID is not available here — caller sets it.
+	// We use empty viewerID here; service enriches MyReaction after calling.
 	return result, nil
+}
+
+// GetMessagesForViewer is like GetMessages but also populates Reactions/MyReaction per message.
+func (r *RoomRepository) GetMessagesForViewer(ctx context.Context, roomID, viewerID string, limit, offset int, q string) ([]*domain.RoomMessage, error) {
+	msgs, err := r.GetMessages(ctx, roomID, limit, offset, q)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.loadReactions(ctx, msgs, viewerID); err != nil {
+		// Non-fatal — return messages without reactions rather than an error.
+		return msgs, nil
+	}
+	return msgs, nil
+}
+
+// ─── Reactions ────────────────────────────────────────────────────
+
+// ReactMessage upserts or removes a reaction.
+// If the user already has the same emoji → removes it (toggle off).
+// If the user has a different emoji → replaces it.
+func (r *RoomRepository) ReactMessage(ctx context.Context, msgID, userID, emoji string) (added bool, err error) {
+	var current string
+	err = r.db.Pool.QueryRow(ctx,
+		`SELECT emoji FROM room_message_reactions WHERE room_message_id=$1 AND user_id=$2`,
+		msgID, userID,
+	).Scan(&current)
+	if err != nil && err != pgx.ErrNoRows {
+		return false, fmt.Errorf("react: check existing: %w", err)
+	}
+
+	if current == emoji {
+		// Toggle off — remove reaction.
+		_, err = r.db.Pool.Exec(ctx,
+			`DELETE FROM room_message_reactions WHERE room_message_id=$1 AND user_id=$2`,
+			msgID, userID,
+		)
+		return false, err
+	}
+	// Upsert — insert or update.
+	_, err = r.db.Pool.Exec(ctx,
+		`INSERT INTO room_message_reactions (room_message_id, user_id, emoji)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (room_message_id, user_id) DO UPDATE SET emoji=$3, created_at=NOW()`,
+		msgID, userID, emoji,
+	)
+	return err == nil, err
+}
+
+// loadReactions batch-loads reactions for a slice of messages and populates
+// each message's Reactions map and MyReaction field.
+func (r *RoomRepository) loadReactions(ctx context.Context, msgs []*domain.RoomMessage, viewerID string) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(msgs))
+	idx := make(map[string]*domain.RoomMessage, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+		idx[m.ID] = m
+	}
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT room_message_id, emoji, COUNT(*) AS cnt,
+		        bool_or(user_id = $2) AS is_mine
+		 FROM room_message_reactions
+		 WHERE room_message_id = ANY($1::uuid[])
+		 GROUP BY room_message_id, emoji`,
+		ids, viewerID,
+	)
+	if err != nil {
+		return fmt.Errorf("load reactions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var msgID, emoji string
+		var cnt int64
+		var isMine bool
+		if err := rows.Scan(&msgID, &emoji, &cnt, &isMine); err != nil {
+			return err
+		}
+		msg, ok := idx[msgID]
+		if !ok {
+			continue
+		}
+		if msg.Reactions == nil {
+			msg.Reactions = make(map[string]int)
+		}
+		msg.Reactions[emoji] = int(cnt)
+		if isMine {
+			msg.MyReaction = emoji
+		}
+	}
+	return rows.Err()
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -710,18 +991,39 @@ func (r *RoomRepository) getVoiceParticipants(ctx context.Context, roomID string
 }
 
 func (r *RoomRepository) getLastMessage(ctx context.Context, roomID string) (string, string, *time.Time) {
-	var text, senderUsername string
+	var text, kind, senderUsername string
 	var at time.Time
 	err := r.db.Pool.QueryRow(ctx,
-		`SELECT rm.text, u.username, rm.created_at
+		`SELECT rm.text, rm.kind, u.username, rm.created_at
 		 FROM room_messages rm
 		 JOIN users u ON u.id = rm.sender_id
 		 WHERE rm.room_id=$1
 		 ORDER BY rm.created_at DESC LIMIT 1`,
 		roomID,
-	).Scan(&text, &senderUsername, &at)
+	).Scan(&text, &kind, &senderUsername, &at)
 	if err != nil {
 		return "", "", nil
+	}
+	// For non-text kinds the text column is empty; show a human-readable preview.
+	if text == "" {
+		switch kind {
+		case "sticker":
+			text = "[Стикер]"
+		case "image":
+			text = "[Изображение]"
+		case "video":
+			text = "[Видео]"
+		case "audio":
+			text = "[Аудио]"
+		case "voice":
+			text = "[Голосовое сообщение]"
+		case "file":
+			text = "[Файл]"
+		default:
+			if kind != "" {
+				text = "[" + kind + "]"
+			}
+		}
 	}
 	return text, senderUsername, &at
 }

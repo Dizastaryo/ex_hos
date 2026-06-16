@@ -86,17 +86,17 @@ func (s *ChatService) GetConversations(ctx context.Context, userID string) ([]po
 	return convs, nil
 }
 
-func (s *ChatService) GetMessages(ctx context.Context, conversationID, currentUserID string, limit, offset int, q string) ([]postgres.ChatMessage, error) {
+func (s *ChatService) GetMessages(ctx context.Context, conversationID, currentUserID string, limit, offset int, beforeID, q string) ([]postgres.ChatMessage, error) {
 	// Verify user is a participant
 	ok, err := s.chatRepo.IsParticipant(ctx, conversationID, currentUserID)
 	if err != nil {
 		return nil, fmt.Errorf("check participant: %w", err)
 	}
 	if !ok {
-		return nil, fmt.Errorf("not a participant")
+		return nil, domain.ErrNotParticipant
 	}
 
-	msgs, err := s.chatRepo.GetMessages(ctx, conversationID, currentUserID, limit, offset, q)
+	msgs, err := s.chatRepo.GetMessages(ctx, conversationID, currentUserID, limit, offset, beforeID, q)
 	if err != nil {
 		return nil, fmt.Errorf("get messages: %w", err)
 	}
@@ -110,7 +110,7 @@ func (s *ChatService) SendMessage(ctx context.Context, conversationID, senderID 
 		return postgres.ChatMessage{}, fmt.Errorf("check participant: %w", err)
 	}
 	if !ok {
-		return postgres.ChatMessage{}, fmt.Errorf("not a participant")
+		return postgres.ChatMessage{}, domain.ErrNotParticipant
 	}
 
 	// Refuse send if any other participant is blocked by/blocking the sender.
@@ -126,6 +126,15 @@ func (s *ChatService) SendMessage(ctx context.Context, conversationID, senderID 
 	// Передаём recipients в repo — там в одной транзакции INSERT message +
 	// INSERT message_recipients (CHAT-10.2). Без этого counts всегда = 0.
 	input.RecipientIDs = others
+
+	// Безопасность: ForwardedFromSender всегда резолвится на сервере по
+	// ForwardedFromMessageID, клиентское значение игнорируется. Это
+	// предотвращает подмену имени отправителя при пересылке сообщений.
+	if input.ForwardedFromMessageID != "" {
+		input.ForwardedFromSender = s.chatRepo.GetForwardedSenderUsername(ctx, input.ForwardedFromMessageID)
+	} else {
+		input.ForwardedFromSender = ""
+	}
 
 	msg, err := s.chatRepo.SendMessage(ctx, conversationID, senderID, input)
 	if err != nil {
@@ -260,6 +269,11 @@ func (s *ChatService) RemoveReaction(ctx context.Context, messageID, userID stri
 	return counts, nil
 }
 
+// maxGroupSize — максимальное количество участников в групповом чате.
+// Ограничение защищает WS fan-out (каждая отправка = N push'ей) и
+// block-check loop (N запросов к blockRepo при каждом сообщении).
+const maxGroupSize = 500
+
 // CreateGroup создаёт group-чат с creator'ом как admin'ом и memberIDs как
 // обычными участниками. Проверяет block'и: если creator <-> любой member в
 // блок-листе, возвращает ErrForbidden. После создания шлёт WS-event
@@ -273,6 +287,10 @@ func (s *ChatService) CreateGroup(
 ) (string, error) {
 	if title == "" {
 		return "", domain.ErrInvalidInput
+	}
+	// +1 — сам creator тоже войдёт в группу.
+	if len(memberIDs)+1 > maxGroupSize {
+		return "", domain.ErrGroupFull
 	}
 	// Block-проверка: creator не может пригласить заблокировавшего/заблокированного.
 	for _, m := range memberIDs {
@@ -323,6 +341,14 @@ func (s *ChatService) AddGroupMember(
 	}
 	if blocked, _ := s.blockRepo.IsEitherBlocked(ctx, callerID, newMemberID); blocked {
 		return domain.ErrForbidden
+	}
+	// Проверяем лимит участников перед добавлением.
+	count, err := s.chatRepo.CountParticipants(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if count >= maxGroupSize {
+		return domain.ErrGroupFull
 	}
 	if err := s.chatRepo.AddParticipant(ctx, conversationID, newMemberID); err != nil {
 		return err
@@ -388,10 +414,11 @@ func (s *ChatService) RemoveGroupMember(
 		pushChatGroupMemberRemoved(s.wsHub, peer, conversationID, targetID)
 	}
 
-	// Bidirectional sync: если это чат сбора — удаляем targetID из сбора тоже.
-	// Хост сбора (organizer) не может быть удалён из сбора через чат (у него
-	// роль 'organizer', sborRepo.Leave вернёт ErrNotJoined — игнорируем).
-	if s.sborRepo != nil {
+	// Bidirectional sync: если пользователь покидает чат сбора САМОСТОЯТЕЛЬНО
+	// (callerID == targetID) — синхронизируем выход в sbor_members тоже.
+	// Когда admin удаляет другого участника (callerID != targetID), участник
+	// остаётся в сборе: удаление из чата и удаление из сбора — разные действия.
+	if s.sborRepo != nil && callerID == targetID {
 		sborID, hostID, sErr := s.sborRepo.GetSborByChatID(ctx, conversationID)
 		if sErr == nil && sborID != "" && targetID != hostID {
 			if lErr := s.sborRepo.Leave(ctx, sborID, targetID); lErr != nil {
@@ -464,6 +491,9 @@ func (s *ChatService) UpdateGroup(
 	ctx context.Context,
 	conversationID, callerID, title, coverURL string,
 ) error {
+	if title == "" {
+		return domain.ErrInvalidInput
+	}
 	kind, err := s.chatRepo.GetConversationKind(ctx, conversationID)
 	if err != nil {
 		return err
@@ -693,7 +723,7 @@ func (s *ChatService) MarkRead(ctx context.Context, conversationID, userID strin
 		return fmt.Errorf("check participant: %w", err)
 	}
 	if !ok {
-		return fmt.Errorf("not a participant")
+		return domain.ErrNotParticipant
 	}
 
 	// MarkRead возвращает per-message flips (msg_id, sender_id, counts).

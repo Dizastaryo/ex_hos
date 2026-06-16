@@ -58,7 +58,7 @@ func (r *SborRepository) SetChatID(ctx context.Context, sborID, chatID string) e
 
 func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*domain.Sbor, error) {
 	query := `
-		SELECT s.id, s.host_id, s.type, s.category, s.title, s.place,
+		SELECT s.id, s.host_id, s.type, s.category, s.title, s.place, s.city,
 		       s.cover_url, s.price, s.description, s.scheduled_at, s.flexible_time, s.max_slots,
 		       s.is_live, s.is_cancelled, s.created_at, s.updated_at,
 		       s.chat_id,
@@ -90,7 +90,7 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 
 	s := &domain.Sbor{}
 	err := r.db.Pool.QueryRow(ctx, query, id, viewerID).Scan(
-		&s.ID, &s.HostID, &s.Type, &s.Category, &s.Title, &s.Place,
+		&s.ID, &s.HostID, &s.Type, &s.Category, &s.Title, &s.Place, &s.City,
 		&s.CoverUrl, &s.Price, &s.Description, &s.ScheduledAt, &s.FlexibleTime, &s.MaxSlots,
 		&s.IsLive, &s.IsCancelled, &s.CreatedAt, &s.UpdatedAt,
 		&s.ChatID,
@@ -111,7 +111,7 @@ func (r *SborRepository) GetByID(ctx context.Context, id, viewerID string) (*dom
 
 // ─── List (feed) ──────────────────────────────────────────────────
 
-func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilter, cityFilter string, limit, offset int) ([]*domain.Sbor, error) {
+func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilter, cityFilter, q string, dateFrom, dateTo *time.Time, limit, offset int) ([]*domain.Sbor, error) {
 	args := []any{viewerID, limit, offset}
 	where := "NOT s.is_cancelled AND (s.scheduled_at IS NULL OR s.scheduled_at > NOW() OR s.is_live = TRUE)"
 	idx := 4
@@ -131,6 +131,22 @@ func (r *SborRepository) List(ctx context.Context, viewerID, typeFilter, catFilt
 		args = append(args, cityFilter)
 		idx++
 	}
+	if dateFrom != nil {
+		where += fmt.Sprintf(" AND s.scheduled_at >= $%d", idx)
+		args = append(args, dateFrom.UTC())
+		idx++
+	}
+	if dateTo != nil {
+		where += fmt.Sprintf(" AND s.scheduled_at <= $%d", idx)
+		args = append(args, dateTo.UTC())
+		idx++
+	}
+	if q != "" {
+		where += fmt.Sprintf(" AND (s.title ILIKE $%d OR s.place ILIKE $%d)", idx, idx)
+		args = append(args, "%"+q+"%")
+		idx++
+	}
+	_ = idx
 
 	query := fmt.Sprintf(`
 		SELECT s.id, s.host_id, s.type, s.category, s.title, s.place, s.city,
@@ -323,12 +339,43 @@ func (r *SborRepository) ListMine(ctx context.Context, userID string, past bool,
 // ─── Join / Leave ────────────────────────────────────────────────
 
 func (r *SborRepository) Join(ctx context.Context, sborID, userID string) error {
-	_, err := r.db.Pool.Exec(ctx,
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock the sbor row and check max_slots atomically to prevent race conditions.
+	var joined int
+	var maxSlots *int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(sm.user_id)::int, s.max_slots
+		 FROM sbory s
+		 LEFT JOIN sbor_members sm ON sm.sbor_id = s.id
+		 WHERE s.id = $1
+		 GROUP BY s.id, s.max_slots
+		 FOR UPDATE OF s`,
+		sborID,
+	).Scan(&joined, &maxSlots)
+	if err == pgx.ErrNoRows {
+		return domain.ErrSborNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("join check: %w", err)
+	}
+	if maxSlots != nil && joined >= *maxSlots {
+		return domain.ErrSborFull
+	}
+
+	_, err = tx.Exec(ctx,
 		`INSERT INTO sbor_members (sbor_id, user_id, role) VALUES ($1,$2,'participant')
 		 ON CONFLICT DO NOTHING`,
 		sborID, userID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *SborRepository) Leave(ctx context.Context, sborID, userID string) error {
@@ -394,25 +441,50 @@ func (r *SborRepository) GetSborByChatID(ctx context.Context, chatID string) (sb
 // связанный групповой чат (bidirectional sync).
 func (r *SborRepository) UpdateByChatID(ctx context.Context, chatID, title, coverURL string) error {
 	_, err := r.db.Pool.Exec(ctx,
-		`UPDATE sbory SET title = $2, cover_url = $3, updated_at = now()
-		 WHERE chat_id = $1 AND NOT is_cancelled`,
+		`UPDATE sbory
+		    SET title     = CASE WHEN $2 = '' THEN title     ELSE $2 END,
+		        cover_url = CASE WHEN $3 = '' THEN cover_url ELSE $3 END,
+		        updated_at = now()
+		  WHERE chat_id = $1 AND NOT is_cancelled`,
 		chatID, title, coverURL,
 	)
 	return err
 }
 
 func (r *SborRepository) Cancel(ctx context.Context, id, hostID string) error {
-	tag, err := r.db.Pool.Exec(ctx,
-		`UPDATE sbory SET is_cancelled=true, updated_at=now() WHERE id=$1 AND host_id=$2`,
-		id, hostID,
-	)
+	tx, err := r.db.Pool.Begin(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin tx: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	defer tx.Rollback(ctx)
+
+	// Mark cancelled and retrieve linked chat in one statement.
+	var chatID *string
+	err = tx.QueryRow(ctx,
+		`UPDATE sbory SET is_cancelled=true, updated_at=now()
+		  WHERE id=$1 AND host_id=$2
+		  RETURNING chat_id`,
+		id, hostID,
+	).Scan(&chatID)
+	if err == pgx.ErrNoRows {
 		return domain.ErrSborNotFound
 	}
-	return nil
+	if err != nil {
+		return fmt.Errorf("cancel sbor: %w", err)
+	}
+
+	// Delete the linked group chat atomically so no orphan chat can remain.
+	if chatID != nil {
+		_, err = tx.Exec(ctx,
+			`DELETE FROM conversations WHERE id=$1`,
+			*chatID,
+		)
+		if err != nil {
+			return fmt.Errorf("delete sbor chat: %w", err)
+		}
+	}
+
+	return tx.Commit(ctx)
 }
 
 // ─── Count helpers ────────────────────────────────────────────────
@@ -451,17 +523,52 @@ func (r *SborRepository) getMemberUsers(ctx context.Context, sborID string) (nam
 	return names, usernames, ids, avatarURLs, nil
 }
 
+// SborMemberDTO is a flat view of a sbor participant returned by ListMembers.
+type SborMemberDTO struct {
+	UserID    string `json:"user_id"`
+	FullName  string `json:"full_name"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+	Role      string `json:"role"`
+}
+
+// ListMembers returns all participants of a sbor (no LIMIT).
+func (r *SborRepository) ListMembers(ctx context.Context, sborID string) ([]*SborMemberDTO, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT u.id, u.full_name, COALESCE(u.username, ''), COALESCE(u.avatar_url, ''), sm.role
+		FROM sbor_members sm
+		JOIN users u ON u.id = sm.user_id
+		WHERE sm.sbor_id = $1
+		ORDER BY CASE sm.role WHEN 'organizer' THEN 0 ELSE 1 END, sm.joined_at`,
+		sborID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list sbor members: %w", err)
+	}
+	defer rows.Close()
+	var result []*SborMemberDTO
+	for rows.Next() {
+		m := &SborMemberDTO{}
+		if err := rows.Scan(&m.UserID, &m.FullName, &m.Username, &m.AvatarURL, &m.Role); err != nil {
+			return nil, err
+		}
+		result = append(result, m)
+	}
+	return result, rows.Err()
+}
+
 // ─── formatWhen ───────────────────────────────────────────────────
 
 func formatWhen(t *time.Time, flexible bool) (when, whenSub string) {
 	if flexible || t == nil {
 		return "Гибко", "договоримся"
 	}
-	now := time.Now()
-	diff := t.Sub(now)
+	now := time.Now().UTC()
+	tUTC := t.UTC()
+	diff := tUTC.Sub(now)
 	days := int(diff.Hours() / 24)
-	timeStr := fmt.Sprintf("%02d:%02d", t.Hour(), t.Minute())
-	fullDate := fmt.Sprintf("%d %s %d · %s", t.Day(), russianMonth(t.Month()), t.Year(), timeStr)
+	timeStr := fmt.Sprintf("%02d:%02d", tUTC.Hour(), tUTC.Minute())
+	fullDate := fmt.Sprintf("%d %s %d · %s", tUTC.Day(), russianMonth(tUTC.Month()), tUTC.Year(), timeStr)
 
 	switch {
 	case diff < 0:
@@ -476,7 +583,7 @@ func formatWhen(t *time.Time, flexible bool) (when, whenSub string) {
 		whenSub = fmt.Sprintf("через %d ч", int(diff.Hours()))
 	case days == 1:
 		when = fmt.Sprintf("Завтра · %s", timeStr)
-		whenSub = fmt.Sprintf("%d %s", t.Day(), russianMonth(t.Month()))
+		whenSub = fmt.Sprintf("%d %s", tUTC.Day(), russianMonth(tUTC.Month()))
 	default:
 		when = fullDate
 		whenSub = fmt.Sprintf("через %d %s", days, pluralDays(days))
@@ -683,36 +790,96 @@ func (r *SborRepository) IsBookmarked(ctx context.Context, userID, sborID string
 
 // ListBookmarked возвращает список сборов в закладках пользователя.
 func (r *SborRepository) ListBookmarked(ctx context.Context, userID string, limit, offset int) ([]*domain.Sbor, error) {
+	// Single query: join bookmarks → sbory — same SELECT shape as List so we
+	// can reuse the batch member-load below. Replaces the previous N+1 pattern
+	// (one GetByID call per bookmarked sbor).
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT s.id FROM sbor_bookmarks sb
-		JOIN sbory s ON s.id = sb.sbor_id AND NOT s.is_cancelled
-		WHERE sb.user_id = $1
-		ORDER BY sb.created_at DESC
+		SELECT s.id, s.host_id, s.type, s.category, s.title, s.place, s.city,
+		       s.cover_url, s.price, s.description, s.scheduled_at, s.flexible_time, s.max_slots,
+		       s.is_live, s.created_at, s.chat_id,
+		       u.full_name,
+		       COUNT(DISTINCT sm.user_id)::int AS joined,
+		       COALESCE(
+		         (SELECT sm2.role FROM sbor_members sm2
+		          WHERE sm2.sbor_id = s.id AND sm2.user_id = $1), ''
+		       ) AS my_role,
+		       EXISTS(
+		         SELECT 1 FROM sbor_members sm3
+		         WHERE sm3.sbor_id = s.id AND sm3.user_id = $1
+		       ) AS is_joined,
+		       true AS is_bookmarked,
+		       COALESCE(
+		         (SELECT rq.status FROM sbor_requests rq
+		          WHERE rq.sbor_id = s.id AND rq.user_id = $1), ''
+		       ) AS my_request_status,
+		       (SELECT COUNT(*)::int FROM sbor_requests rq2
+		        WHERE rq2.sbor_id = s.id AND rq2.status = 'pending') AS pending_requests_count
+		FROM sbor_bookmarks bk
+		JOIN sbory s ON s.id = bk.sbor_id AND NOT s.is_cancelled
+		JOIN users u ON u.id = s.host_id
+		LEFT JOIN sbor_members sm ON sm.sbor_id = s.id
+		WHERE bk.user_id = $1
+		GROUP BY s.id, u.full_name, bk.created_at
+		ORDER BY bk.created_at DESC
 		LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list bookmarked: %w", err)
 	}
 	defer rows.Close()
 
-	var ids []string
+	var result []*domain.Sbor
+	idxByID := make(map[string]int)
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		s := &domain.Sbor{}
+		if err := rows.Scan(
+			&s.ID, &s.HostID, &s.Type, &s.Category, &s.Title, &s.Place, &s.City,
+			&s.CoverUrl, &s.Price, &s.Description, &s.ScheduledAt, &s.FlexibleTime, &s.MaxSlots,
+			&s.IsLive, &s.CreatedAt, &s.ChatID,
+			&s.HostName, &s.Joined, &s.MyRole, &s.IsJoined, &s.IsBookmarked,
+			&s.MyRequestStatus, &s.PendingRequestsCount,
+		); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		s.When, s.WhenSub = formatWhen(s.ScheduledAt, s.FlexibleTime)
+		idxByID[s.ID] = len(result)
+		result = append(result, s)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(result) == 0 {
+		return result, nil
+	}
 
-	var result []*domain.Sbor
-	for _, id := range ids {
-		sbor, err := r.GetByID(ctx, id, userID)
-		if err != nil {
-			continue // сбор мог быть отменён между запросами
+	// Batch-load member previews (one query for all sbors).
+	ids := make([]string, len(result))
+	for i, s := range result {
+		ids[i] = s.ID
+	}
+	memberRows, err := r.db.Pool.Query(ctx, `
+		SELECT sm.sbor_id, u.full_name, COALESCE(u.username,''), u.id, COALESCE(u.avatar_url,'')
+		FROM sbor_members sm
+		JOIN users u ON u.id = sm.user_id
+		WHERE sm.sbor_id = ANY($1)
+		ORDER BY sm.sbor_id, sm.joined_at`, ids)
+	if err == nil {
+		defer memberRows.Close()
+		counters := make(map[string]int, len(result))
+		for memberRows.Next() {
+			var sborID, name, username, uid, avatarURL string
+			if err := memberRows.Scan(&sborID, &name, &username, &uid, &avatarURL); err != nil {
+				continue
+			}
+			if counters[sborID] >= 8 {
+				continue
+			}
+			counters[sborID]++
+			i := idxByID[sborID]
+			result[i].MemberNames = append(result[i].MemberNames, name)
+			result[i].MemberUsernames = append(result[i].MemberUsernames, username)
+			result[i].MemberIDs = append(result[i].MemberIDs, uid)
+			result[i].MemberAvatarURLs = append(result[i].MemberAvatarURLs, avatarURL)
 		}
-		result = append(result, sbor)
 	}
 	return result, nil
 }

@@ -73,7 +73,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
-		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       COALESCE(f.pdf_conversion_status, 'none'),
@@ -88,7 +88,7 @@ func (r *FileRepository) GetByID(ctx context.Context, id string) (*domain.File, 
 		&file.ID, &file.UserID, &file.Filename,
 		&file.Title, &file.AuthorName, &file.Language,
 		&file.FileURL, &file.MimeType, &file.FileSize,
-		&file.CategoryID, &file.DownloadsCount, &file.LikesCount, &file.IsPreviewable,
+		&file.CategoryID, &file.DownloadsCount, &file.LikesCount, &file.ViewsCount, &file.RatingsCount, &file.RatingsSum, &file.IsPreviewable,
 		&file.PreviewURL, &file.CoverURL, &file.Description,
 		&file.PagesCount, &file.DocFormat,
 		&file.PdfConversionStatus,
@@ -236,7 +236,7 @@ func (r *FileRepository) Trending(ctx context.Context, limit int, period string)
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
-		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       COALESCE(f.pdf_conversion_status, 'none'),
@@ -245,7 +245,14 @@ func (r *FileRepository) Trending(ctx context.Context, limit int, period string)
 		FROM files f
 		JOIN users u ON u.id = f.user_id
 		WHERE 1=1 %s
-		ORDER BY (f.likes_count * 2 + f.downloads_count) DESC, f.created_at DESC
+		ORDER BY (
+			f.likes_count * 3
+			+ f.downloads_count * 2
+			+ COALESCE(f.views_count, 0)
+			+ CASE WHEN COALESCE(f.ratings_count, 0) > 0
+				THEN ROUND((COALESCE(f.ratings_sum, 0)::float / f.ratings_count) * 10)
+				ELSE 0 END
+		) DESC, f.created_at DESC
 		LIMIT $1`, intervalClause)
 	rows, err := r.db.Pool.Query(ctx, query, limit)
 	if err != nil {
@@ -263,7 +270,7 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
-		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       COALESCE(f.pdf_conversion_status, 'none'),
@@ -283,12 +290,47 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 		n++
 	}
 
-	isSearch := p.Q != ""
+	isSearch := p.Q != "" || p.AuthorName != ""
 
-	// Поиск через tsvector
-	if isSearch {
-		where = append(where, fmt.Sprintf("f.search_vector @@ plainto_tsquery('russian', $%d)", n))
+	// Поиск через tsvector (по названию/описанию) + ILIKE fallback.
+	// tsvector использует 'simple' конфиг (см. migration 000081), поэтому
+	// plainto_tsquery тоже 'simple'. ILIKE fallback ловит частичные совпадения.
+	qArgPos := 0
+	if p.Q != "" {
+		qArgPos = n
+		where = append(where, fmt.Sprintf(
+			"(f.search_vector @@ plainto_tsquery('simple', $%d) OR f.title ILIKE '%%' || $%d || '%%' OR f.author_name ILIKE '%%' || $%d || '%%')",
+			n, n, n,
+		))
 		args = append(args, p.Q)
+		n++
+	}
+
+	// Поиск по автору (ILIKE)
+	if p.AuthorName != "" {
+		where = append(where, fmt.Sprintf("f.author_name ILIKE '%%' || $%d || '%%'", n))
+		args = append(args, p.AuthorName)
+		n++
+	}
+
+	// Фильтр по формату документа
+	if p.DocFormat != "" {
+		where = append(where, fmt.Sprintf("f.doc_format = $%d", n))
+		args = append(args, p.DocFormat)
+		n++
+	}
+
+	// Фильтр по языку
+	if p.Language != "" {
+		where = append(where, fmt.Sprintf("f.language = $%d", n))
+		args = append(args, p.Language)
+		n++
+	}
+
+	// Исключить конкретный файл (для "похожих файлов")
+	if p.ExcludeID != "" {
+		where = append(where, fmt.Sprintf("f.id != $%d", n))
+		args = append(args, p.ExcludeID)
 		n++
 	}
 
@@ -306,18 +348,25 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 
 	// ORDER BY
 	if isSearch {
-		// ts_rank — аргумент уже в args; ссылаемся на его позицию
-		qPos := 1
-		if p.CategoryID != "" {
-			qPos = 2
+		if p.Q != "" && qArgPos > 0 {
+			// Rank by tsvector rank (when matched), then recency
+			query += fmt.Sprintf(
+				" ORDER BY ts_rank(f.search_vector, plainto_tsquery('simple', $%d)) DESC, f.created_at DESC",
+				qArgPos,
+			)
+		} else {
+			query += " ORDER BY f.created_at DESC"
 		}
-		query += fmt.Sprintf(" ORDER BY ts_rank(f.search_vector, plainto_tsquery('russian', $%d)) DESC, f.created_at DESC", qPos)
 	} else {
 		switch p.Sort {
 		case "likes":
 			query += " ORDER BY f.likes_count DESC, f.created_at DESC"
 		case "downloads":
 			query += " ORDER BY f.downloads_count DESC, f.created_at DESC"
+		case "views":
+			query += " ORDER BY f.views_count DESC, f.created_at DESC"
+		case "rating":
+			query += " ORDER BY CASE WHEN f.ratings_count = 0 THEN 0 ELSE f.ratings_sum::float / f.ratings_count END DESC, f.ratings_count DESC, f.created_at DESC"
 		case "title":
 			query += " ORDER BY f.title ASC"
 		default: // "date"
@@ -346,7 +395,7 @@ func (r *FileRepository) List(ctx context.Context, p domain.FileListParams) ([]*
 
 	nextCursor := ""
 	if len(files) > limit {
-		nextCursor = files[limit-1].ID
+		nextCursor = files[limit].ID
 		files = files[:limit]
 	}
 	return files, nextCursor, nil
@@ -362,7 +411,7 @@ func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit,
 		SELECT f.id, f.user_id, f.filename,
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
-		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
 		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
 		       COALESCE(f.pdf_conversion_status, 'none'),
@@ -382,6 +431,26 @@ func (r *FileRepository) GetUserFiles(ctx context.Context, userID string, limit,
 	return files, total, err
 }
 
+func (r *FileRepository) UpdateMeta(ctx context.Context, fileID, userID string, req domain.UpdateFileMetaRequest) error {
+	result, err := r.db.Pool.Exec(ctx, `
+		UPDATE files
+		SET title       = CASE WHEN $3 != '' THEN $3 ELSE title END,
+		    author_name = CASE WHEN $4 != '' THEN $4 ELSE author_name END,
+		    description = $5,
+		    category_id = NULLIF($6, '')::uuid,
+		    language    = CASE WHEN $7 != '' THEN $7 ELSE language END
+		WHERE id = $1 AND user_id = $2`,
+		fileID, userID, req.Title, req.AuthorName, req.Description, req.CategoryID, req.Language,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrFileNotFound
+	}
+	return nil
+}
+
 func (r *FileRepository) Delete(ctx context.Context, id, userID string) error {
 	result, err := r.db.Pool.Exec(ctx, `DELETE FROM files WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {
@@ -394,19 +463,30 @@ func (r *FileRepository) Delete(ctx context.Context, id, userID string) error {
 }
 
 func (r *FileRepository) RecordDownload(ctx context.Context, fileID, userID string) error {
-	_, err := r.db.Pool.Exec(ctx, `INSERT INTO file_downloads (file_id, user_id) VALUES ($1, $2)`, fileID, userID)
+	tx, err := r.db.Pool.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `INSERT INTO file_downloads (file_id, user_id) VALUES ($1, $2)`, fileID, userID); err != nil {
 		return err
 	}
-	_, err = r.db.Pool.Exec(ctx, `UPDATE files SET downloads_count = downloads_count + 1 WHERE id = $1`, fileID)
-	return err
+	if _, err := tx.Exec(ctx, `UPDATE files SET downloads_count = downloads_count + 1 WHERE id = $1`, fileID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // LikeFile — записывает в polymorphic `likes` (entity_type='file') + инкремент
 // files.likes_count. Возвращает true если лайк новый (не было ранее), false
 // если идемпотентный repeat-вызов.
 func (r *FileRepository) LikeFile(ctx context.Context, fileID, userID string) (bool, error) {
-	tag, err := r.db.Pool.Exec(ctx, `
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
 		INSERT INTO likes (user_id, entity_id, entity_type)
 		VALUES ($1, $2, 'file')
 		ON CONFLICT (user_id, entity_id, entity_type) DO NOTHING`,
@@ -417,15 +497,20 @@ func (r *FileRepository) LikeFile(ctx context.Context, fileID, userID string) (b
 	if tag.RowsAffected() == 0 {
 		return false, nil // уже лайкнул раньше
 	}
-	if _, err := r.db.Pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE files SET likes_count = likes_count + 1 WHERE id = $1`, fileID); err != nil {
 		return false, fmt.Errorf("inc likes_count: %w", err)
 	}
-	return true, nil
+	return true, tx.Commit(ctx)
 }
 
 func (r *FileRepository) UnlikeFile(ctx context.Context, fileID, userID string) (bool, error) {
-	tag, err := r.db.Pool.Exec(ctx,
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx,
 		`DELETE FROM likes WHERE user_id = $1 AND entity_id = $2 AND entity_type = 'file'`,
 		userID, fileID)
 	if err != nil {
@@ -434,11 +519,186 @@ func (r *FileRepository) UnlikeFile(ctx context.Context, fileID, userID string) 
 	if tag.RowsAffected() == 0 {
 		return false, nil
 	}
-	if _, err := r.db.Pool.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE files SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = $1`, fileID); err != nil {
 		return false, fmt.Errorf("dec likes_count: %w", err)
 	}
-	return true, nil
+	return true, tx.Commit(ctx)
+}
+
+// RateFile upserts a rating (1–5) for a file by the user, keeping aggregate columns updated.
+func (r *FileRepository) RateFile(ctx context.Context, fileID, userID string, rating int, reviewText string) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Check for existing rating to adjust the delta
+	var prevRating int
+	err = tx.QueryRow(ctx,
+		`SELECT rating FROM file_ratings WHERE user_id = $1 AND file_id = $2`,
+		userID, fileID).Scan(&prevRating)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check prev rating: %w", err)
+	}
+
+	// Upsert rating row (with review_text)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO file_ratings (user_id, file_id, rating, review_text)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, file_id) DO UPDATE SET rating = $3, review_text = $4, updated_at = NOW()`,
+		userID, fileID, rating, reviewText)
+	if err != nil {
+		return fmt.Errorf("upsert rating: %w", err)
+	}
+
+	// Update file aggregate counters
+	if prevRating == 0 {
+		// New rating
+		_, err = tx.Exec(ctx,
+			`UPDATE files SET ratings_count = ratings_count + 1, ratings_sum = ratings_sum + $2 WHERE id = $1`,
+			fileID, rating)
+	} else {
+		// Changed rating — adjust sum only
+		delta := rating - prevRating
+		_, err = tx.Exec(ctx,
+			`UPDATE files SET ratings_sum = ratings_sum + $2 WHERE id = $1`,
+			fileID, delta)
+	}
+	if err != nil {
+		return fmt.Errorf("update file rating agg: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
+// GetUserRating returns the user's rating and review for a file (0/"" if not rated).
+func (r *FileRepository) GetUserRating(ctx context.Context, fileID, userID string) (int, string, error) {
+	var rating int
+	var reviewText string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT rating, COALESCE(review_text, '') FROM file_ratings WHERE user_id = $1 AND file_id = $2`,
+		userID, fileID).Scan(&rating, &reviewText)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, "", nil
+		}
+		return 0, "", err
+	}
+	return rating, reviewText, nil
+}
+
+// GetFileReviews returns recent reviews for a file with user info.
+func (r *FileRepository) GetFileReviews(ctx context.Context, fileID string, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT fr.user_id, u.username, u.full_name, COALESCE(u.avatar_url, ''),
+		       fr.rating, COALESCE(fr.review_text, ''), fr.updated_at
+		FROM file_ratings fr
+		JOIN users u ON u.id = fr.user_id
+		WHERE fr.file_id = $1 AND fr.review_text <> ''
+		ORDER BY fr.updated_at DESC
+		LIMIT $2`, fileID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get file reviews: %w", err)
+	}
+	defer rows.Close()
+
+	var result []map[string]interface{}
+	for rows.Next() {
+		var userID, username, fullName, avatarURL, reviewText string
+		var rating int
+		var updatedAt interface{}
+		if err := rows.Scan(&userID, &username, &fullName, &avatarURL, &rating, &reviewText, &updatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]interface{}{
+			"user_id":     userID,
+			"username":    username,
+			"full_name":   fullName,
+			"avatar_url":  avatarURL,
+			"rating":      rating,
+			"review_text": reviewText,
+			"updated_at":  updatedAt,
+		})
+	}
+	if result == nil {
+		result = []map[string]interface{}{}
+	}
+	return result, rows.Err()
+}
+
+// GetUserRatingBatch returns a map of fileID→rating for files the user has rated.
+func (r *FileRepository) GetUserRatingBatch(ctx context.Context, userID string, fileIDs []string) (map[string]int, error) {
+	if len(fileIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT file_id, rating FROM file_ratings WHERE user_id = $1 AND file_id = ANY($2)`,
+		userID, fileIDs)
+	if err != nil {
+		return nil, fmt.Errorf("batch user ratings: %w", err)
+	}
+	defer rows.Close()
+	result := make(map[string]int, len(fileIDs))
+	for rows.Next() {
+		var fid string
+		var rating int
+		if err := rows.Scan(&fid, &rating); err != nil {
+			return nil, err
+		}
+		result[fid] = rating
+	}
+	return result, rows.Err()
+}
+
+// IncrementViews atomically increments views_count for the given file.
+// If userID is non-empty, also upserts a record in file_views (for recently-viewed history).
+// For anonymous viewers only the counter is incremented.
+func (r *FileRepository) IncrementViews(ctx context.Context, fileID, userID string) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE files SET views_count = views_count + 1 WHERE id = $1`, fileID)
+	if err != nil {
+		return err
+	}
+	if userID == "" {
+		return nil
+	}
+	_, err = r.db.Pool.Exec(ctx, `
+		INSERT INTO file_views (user_id, file_id, viewed_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (user_id, file_id) DO UPDATE SET viewed_at = NOW()`,
+		userID, fileID)
+	return err
+}
+
+// GetRecentlyViewed returns the last N files viewed by the user (newest first).
+func (r *FileRepository) GetRecentlyViewed(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
+		       f.created_at,
+		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
+		FROM file_views fv
+		JOIN files f ON f.id = fv.file_id
+		JOIN users u ON u.id = f.user_id
+		WHERE fv.user_id = $1
+		ORDER BY fv.viewed_at DESC
+		LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get recently viewed: %w", err)
+	}
+	return scanFiles(rows)
 }
 
 func (r *FileRepository) IsFileLiked(ctx context.Context, fileID, userID string) (bool, error) {
@@ -449,6 +709,30 @@ func (r *FileRepository) IsFileLiked(ctx context.Context, fileID, userID string)
 			WHERE user_id = $1 AND entity_id = $2 AND entity_type = 'file'
 		)`, userID, fileID).Scan(&exists)
 	return exists, err
+}
+
+// IsFileLikedBatch returns a set of file IDs that the user has liked.
+func (r *FileRepository) IsFileLikedBatch(ctx context.Context, userID string, fileIDs []string) (map[string]bool, error) {
+	if len(fileIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT entity_id FROM likes
+		 WHERE user_id = $1 AND entity_id = ANY($2) AND entity_type = 'file'`,
+		userID, fileIDs)
+	if err != nil {
+		return nil, fmt.Errorf("batch file likes: %w", err)
+	}
+	defer rows.Close()
+	result := make(map[string]bool, len(fileIDs))
+	for rows.Next() {
+		var fid string
+		if err := rows.Scan(&fid); err != nil {
+			return nil, err
+		}
+		result[fid] = true
+	}
+	return result, rows.Err()
 }
 
 func (r *FileRepository) GetCategories(ctx context.Context) ([]*domain.FileCategory, error) {
@@ -499,7 +783,7 @@ func scanFiles(rows interface {
 			&f.ID, &f.UserID, &f.Filename,
 			&f.Title, &f.AuthorName, &f.Language,
 			&f.FileURL, &f.MimeType, &f.FileSize,
-			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.IsPreviewable,
+			&f.CategoryID, &f.DownloadsCount, &f.LikesCount, &f.ViewsCount, &f.RatingsCount, &f.RatingsSum, &f.IsPreviewable,
 			&f.PreviewURL, &f.CoverURL, &f.Description,
 			&f.PagesCount, &f.DocFormat,
 			&f.PdfConversionStatus,
@@ -512,4 +796,256 @@ func scanFiles(rows interface {
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// PopularAuthors возвращает авторов с наибольшим числом лайков+скачиваний.
+func (r *FileRepository) PopularAuthors(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT author_name,
+		       COUNT(*) AS files_count,
+		       COALESCE(SUM(likes_count), 0) AS total_likes,
+		       COALESCE(SUM(downloads_count), 0) AS total_downloads
+		FROM files
+		WHERE author_name IS NOT NULL AND author_name != ''
+		GROUP BY author_name
+		HAVING COUNT(*) >= 2
+		ORDER BY (COALESCE(SUM(likes_count), 0) * 2 + COALESCE(SUM(downloads_count), 0)) DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("popular authors: %w", err)
+	}
+	defer rows.Close()
+
+	var authors []map[string]interface{}
+	for rows.Next() {
+		var name string
+		var filesCount, totalLikes, totalDownloads int
+		if err := rows.Scan(&name, &filesCount, &totalLikes, &totalDownloads); err != nil {
+			return nil, err
+		}
+		authors = append(authors, map[string]interface{}{
+			"author_name":     name,
+			"files_count":     filesCount,
+			"total_likes":     totalLikes,
+			"total_downloads": totalDownloads,
+		})
+	}
+	return authors, rows.Err()
+}
+
+// FormatStats возвращает количество файлов по каждому формату.
+func (r *FileRepository) FormatStats(ctx context.Context) ([]map[string]interface{}, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT COALESCE(doc_format, 'unknown') AS fmt, COUNT(*) AS cnt
+		FROM files
+		WHERE doc_format IS NOT NULL AND doc_format != ''
+		GROUP BY doc_format
+		ORDER BY cnt DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("format stats: %w", err)
+	}
+	defer rows.Close()
+
+	var stats []map[string]interface{}
+	for rows.Next() {
+		var format string
+		var count int
+		if err := rows.Scan(&format, &count); err != nil {
+			return nil, err
+		}
+		stats = append(stats, map[string]interface{}{
+			"format": format,
+			"count":  count,
+		})
+	}
+	return stats, rows.Err()
+}
+
+// RecommendedFiles returns personalised recommendations for the user:
+//  1. Files from categories the user has interacted with (read/want/done)
+//  2. Files by authors the user has read before
+//  3. Scored by quality (likes × 3 + downloads × 2 + avg_rating × 10 + views)
+//  4. Excludes files already in the user's reading history or status
+func (r *FileRepository) RecommendedFiles(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	query := `
+		WITH user_excluded AS (
+			SELECT file_id FROM reading_status WHERE user_id = $1
+			UNION
+			SELECT file_id FROM reading_progress WHERE user_id = $1
+			UNION
+			SELECT file_id FROM file_views WHERE user_id = $1
+		),
+		user_categories AS (
+			SELECT DISTINCT f2.category_id
+			FROM reading_status rs
+			JOIN files f2 ON f2.id = rs.file_id
+			WHERE rs.user_id = $1 AND f2.category_id IS NOT NULL
+		),
+		user_authors AS (
+			SELECT DISTINCT f2.author_name
+			FROM reading_status rs
+			JOIN files f2 ON f2.id = rs.file_id
+			WHERE rs.user_id = $1 AND f2.author_name IS NOT NULL AND f2.author_name != ''
+		)
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, COALESCE(f.views_count, 0), COALESCE(f.ratings_count, 0), COALESCE(f.ratings_sum, 0), f.is_previewable,
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
+		       f.created_at,
+		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
+		FROM files f
+		JOIN users u ON u.id = f.user_id
+		WHERE f.id NOT IN (SELECT file_id FROM user_excluded)
+		  AND (
+		      f.category_id IN (SELECT category_id FROM user_categories)
+		      OR (f.author_name IS NOT NULL AND f.author_name IN (SELECT author_name FROM user_authors))
+		  )
+		ORDER BY (
+			f.likes_count * 3
+			+ f.downloads_count * 2
+			+ COALESCE(f.views_count, 0)
+			+ CASE WHEN COALESCE(f.ratings_count, 0) > 0
+				THEN ROUND((COALESCE(f.ratings_sum, 0)::float / f.ratings_count) * 10)
+				ELSE 0 END
+		) DESC, f.created_at DESC
+		LIMIT $2`
+	rows, err := r.db.Pool.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recommended files: %w", err)
+	}
+	defer rows.Close()
+	return scanFiles(rows)
+}
+
+// GetSocialPicks returns files that users you follow are actively reading.
+func (r *FileRepository) GetSocialPicks(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
+		       f.created_at,
+		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
+		FROM files f
+		JOIN users u ON u.id = f.user_id
+		JOIN (
+		    SELECT rs.file_id, COUNT(DISTINCT rs.user_id) AS cnt
+		    FROM reading_status rs
+		    JOIN follows fl ON fl.following_id = rs.user_id
+		    WHERE fl.follower_id = $1
+		      AND rs.status IN ('reading', 'done')
+		    GROUP BY rs.file_id
+		) picks ON picks.file_id = f.id
+		ORDER BY picks.cnt DESC, f.downloads_count DESC
+		LIMIT $2`,
+		userID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get social picks: %w", err)
+	}
+	defer rows.Close()
+	return scanFiles(rows)
+}
+
+// GetRelatedFiles returns files by the same author or same category, excluding fileID.
+func (r *FileRepository) GetRelatedFiles(ctx context.Context, fileID string, limit int) ([]*domain.File, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	// Fetch author_name and category_id of the target file
+	var authorName, categoryID string
+	_ = r.db.Pool.QueryRow(ctx,
+		`SELECT COALESCE(author_name, ''), COALESCE(category_id::text, '') FROM files WHERE id = $1`,
+		fileID,
+	).Scan(&authorName, &categoryID)
+
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT f.id, f.user_id, f.filename,
+		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
+		       f.file_url, f.mime_type, f.file_size,
+		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
+		       f.created_at,
+		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
+		FROM files f
+		JOIN users u ON u.id = f.user_id
+		WHERE f.id != $1
+		  AND (
+		      ($2 != '' AND LOWER(COALESCE(f.author_name, '')) = LOWER($2))
+		      OR ($3 != '' AND f.category_id::text = $3)
+		  )
+		ORDER BY
+		  CASE WHEN $2 != '' AND LOWER(COALESCE(f.author_name, '')) = LOWER($2) THEN 0 ELSE 1 END,
+		  f.downloads_count DESC,
+		  COALESCE(f.views_count, 0) DESC
+		LIMIT $4`,
+		fileID, authorName, categoryID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get related files: %w", err)
+	}
+	defer rows.Close()
+	return scanFiles(rows)
+}
+
+// SearchSuggestions возвращает подсказки (заголовки и авторы) по префиксу.
+func (r *FileRepository) SearchSuggestions(ctx context.Context, q string, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	pattern := "%" + q + "%"
+
+	// Titles matching the query (ranked by likes+downloads for the most popular matching title)
+	rows, err := r.db.Pool.Query(ctx, `
+		(SELECT 'title' AS type, title AS value, MAX(likes_count + downloads_count) AS score
+		 FROM files
+		 WHERE title IS NOT NULL AND title ILIKE $1
+		 GROUP BY title
+		 ORDER BY score DESC, title
+		 LIMIT $2)
+		UNION ALL
+		(SELECT 'author' AS type, author_name AS value, SUM(likes_count + downloads_count) AS score
+		 FROM files
+		 WHERE author_name IS NOT NULL AND author_name != '' AND author_name ILIKE $1
+		 GROUP BY author_name
+		 ORDER BY score DESC, author_name
+		 LIMIT $2)
+		ORDER BY score DESC
+	`, pattern, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search suggestions: %w", err)
+	}
+	defer rows.Close()
+
+	var suggestions []map[string]interface{}
+	for rows.Next() {
+		var typ, value string
+		var score int
+		if err := rows.Scan(&typ, &value, &score); err != nil {
+			return nil, err
+		}
+		// Flutter expects "text" and "type" keys
+		suggestions = append(suggestions, map[string]interface{}{
+			"type": typ,
+			"text": value,
+		})
+	}
+	return suggestions, rows.Err()
 }

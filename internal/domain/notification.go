@@ -3,12 +3,13 @@ package domain
 import "time"
 
 const (
-	NotificationTypeLike       = "like"
-	NotificationTypeComment    = "comment"
-	NotificationTypeFollow     = "follow"
-	NotificationTypeMention    = "mention"
-	NotificationTypeStoryLike  = "story_like"
-	NotificationTypeMissedCall = "missed_call" // C-8
+	NotificationTypeLike        = "like"
+	NotificationTypeComment     = "comment"
+	NotificationTypeFollow      = "follow"
+	NotificationTypeMention     = "mention"
+	NotificationTypeStoryLike   = "story_like"
+	NotificationTypeMissedCall  = "missed_call"  // C-8
+	NotificationTypeScannerLike = "scanner_like" // BLE-сканер: тебя лайкнули
 )
 
 type Notification struct {

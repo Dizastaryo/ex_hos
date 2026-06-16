@@ -101,6 +101,9 @@ func (h *FileHandler) Trending(c *fiber.Ctx) error {
 		h.logger.Error("trending files", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to get trending")
 	}
+	viewerID := middleware.GetUserID(c)
+	h.fileService.EnrichWithReadingStatus(c.Context(), files, viewerID)
+	h.fileService.EnrichWithLikeStatus(c.Context(), files, viewerID)
 	return respondSuccess(c, fiber.StatusOK, files, nil)
 }
 
@@ -114,6 +117,10 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 	p := domain.FileListParams{
 		CategoryID: c.Query("category_id"),
 		Q:          c.Query("q"),
+		AuthorName: c.Query("author"),
+		ExcludeID:  c.Query("exclude_id"),
+		DocFormat:  c.Query("format"),
+		Language:   c.Query("language"),
 		Sort:       c.Query("sort", "date"),
 		Cursor:     c.Query("cursor"),
 		Limit:      limit,
@@ -123,6 +130,9 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 		h.logger.Error("list files", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to list files")
 	}
+	viewerID := middleware.GetUserID(c)
+	h.fileService.EnrichWithReadingStatus(c.Context(), files, viewerID)
+	h.fileService.EnrichWithLikeStatus(c.Context(), files, viewerID)
 	return respondSuccess(c, fiber.StatusOK, files, fiber.Map{"next_cursor": nextCursor})
 }
 
@@ -141,8 +151,126 @@ func (h *FileHandler) GetFile(c *fiber.Ctx) error {
 		if liked, err := h.fileService.IsFileLiked(c.Context(), id, viewerID); err == nil {
 			file.IsLiked = liked
 		}
+		h.fileService.EnrichWithReadingStatus(c.Context(), []*domain.File{file}, viewerID)
+		if userRating, _, err := h.fileService.GetUserRating(c.Context(), id, viewerID); err == nil {
+			file.UserRating = userRating
+		}
 	}
 	return respondSuccess(c, fiber.StatusOK, file, nil)
+}
+
+// POST /api/v1/files/:id/view — increment view counter (optional auth for history)
+func (h *FileHandler) TrackView(c *fiber.Ctx) error {
+	fileID := c.Params("id")
+	userID := middleware.GetUserID(c) // empty string if not authenticated
+	if err := h.fileService.TrackView(c.Context(), fileID, userID); err != nil {
+		// Non-fatal: log but don't fail the request
+		h.logger.Warn("track file view", zap.String("file_id", fileID), zap.Error(err))
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
+}
+
+// GET /api/v1/users/me/recently-viewed — files the user recently opened
+func (h *FileHandler) GetRecentlyViewed(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	limit := c.QueryInt("limit", 20)
+	if limit > 50 {
+		limit = 50
+	}
+	files, err := h.fileService.GetRecentlyViewed(c.Context(), userID, limit)
+	if err != nil {
+		h.logger.Error("get recently viewed", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get recently viewed")
+	}
+	h.fileService.EnrichWithReadingStatus(c.Context(), files, userID)
+	h.fileService.EnrichWithLikeStatus(c.Context(), files, userID)
+	return respondSuccess(c, fiber.StatusOK, files, nil)
+}
+
+// PUT /api/v1/files/:id/rating — set star rating 1–5 (auth required)
+func (h *FileHandler) RateFile(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	fileID := c.Params("id")
+	var body struct {
+		Rating     int    `json:"rating"`
+		ReviewText string `json:"review_text"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid body")
+	}
+	if body.Rating < 1 || body.Rating > 5 {
+		return respondError(c, fiber.StatusBadRequest, "rating must be between 1 and 5")
+	}
+	if err := h.fileService.RateFile(c.Context(), fileID, userID, body.Rating, body.ReviewText); err != nil {
+		h.logger.Error("rate file", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to rate file")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
+}
+
+// GET /api/v1/files/:id/rating — get current user's rating + review for the file
+func (h *FileHandler) GetUserRating(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	fileID := c.Params("id")
+	rating, reviewText, err := h.fileService.GetUserRating(c.Context(), fileID, userID)
+	if err != nil {
+		return respondError(c, fiber.StatusInternalServerError, "failed to get rating")
+	}
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{
+		"rating":      rating,
+		"review_text": reviewText,
+	}, nil)
+}
+
+// GET /api/v1/files/social-picks — files popular among users you follow
+func (h *FileHandler) SocialPicks(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	limit := c.QueryInt("limit", 10)
+	if limit > 20 {
+		limit = 20
+	}
+	files, err := h.fileService.GetSocialPicks(c.Context(), userID, limit)
+	if err != nil {
+		h.logger.Error("social picks", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get social picks")
+	}
+	h.fileService.EnrichWithLikeStatus(c.Context(), files, userID)
+	h.fileService.EnrichWithReadingStatus(c.Context(), files, userID)
+	return respondSuccess(c, fiber.StatusOK, files, nil)
+}
+
+// GET /api/v1/files/:id/related — files by the same author or category
+func (h *FileHandler) GetRelatedFiles(c *fiber.Ctx) error {
+	fileID := c.Params("id")
+	limit := c.QueryInt("limit", 8)
+	if limit > 20 {
+		limit = 20
+	}
+	files, err := h.fileService.GetRelatedFiles(c.Context(), fileID, limit)
+	if err != nil {
+		h.logger.Error("get related files", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get related files")
+	}
+	viewerID := middleware.GetUserID(c)
+	if viewerID != "" {
+		h.fileService.EnrichWithLikeStatus(c.Context(), files, viewerID)
+	}
+	return respondSuccess(c, fiber.StatusOK, files, nil)
+}
+
+// GET /api/v1/files/:id/reviews — get community reviews for a file
+func (h *FileHandler) GetFileReviews(c *fiber.Ctx) error {
+	fileID := c.Params("id")
+	limit := c.QueryInt("limit", 10)
+	if limit > 50 {
+		limit = 50
+	}
+	reviews, err := h.fileService.GetFileReviews(c.Context(), fileID, limit)
+	if err != nil {
+		h.logger.Error("get file reviews", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get reviews")
+	}
+	return respondSuccess(c, fiber.StatusOK, reviews, nil)
 }
 
 // POST /api/v1/files/:id/like
@@ -163,6 +291,28 @@ func (h *FileHandler) UnlikeFile(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to unlike file")
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
+}
+
+// PATCH /api/v1/files/:id — редактирование метаданных (только автор)
+func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	fileID := c.Params("id")
+	var req domain.UpdateFileMetaRequest
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid body")
+	}
+	if req.Title == "" {
+		return respondError(c, fiber.StatusBadRequest, "title is required")
+	}
+	file, err := h.fileService.UpdateFileMeta(c.Context(), fileID, userID, req)
+	if err != nil {
+		if errors.Is(err, domain.ErrFileNotFound) {
+			return respondError(c, fiber.StatusNotFound, "file not found or access denied")
+		}
+		h.logger.Error("update file meta", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to update file")
+	}
+	return respondSuccess(c, fiber.StatusOK, file, nil)
 }
 
 // DELETE /api/v1/files/:id
@@ -332,4 +482,59 @@ func (h *FileHandler) GetUserFiles(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to get user files")
 	}
 	return respondSuccess(c, fiber.StatusOK, files, pagination.MetaFromTotal(total, p))
+}
+
+// GET /api/v1/files/authors/popular
+func (h *FileHandler) PopularAuthors(c *fiber.Ctx) error {
+	limit := c.QueryInt("limit", 10)
+	if limit > 50 {
+		limit = 50
+	}
+	authors, err := h.fileService.PopularAuthors(c.Context(), limit)
+	if err != nil {
+		h.logger.Error("popular authors", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get popular authors")
+	}
+	return respondSuccess(c, fiber.StatusOK, authors, nil)
+}
+
+// GET /api/v1/files/stats/formats
+func (h *FileHandler) FormatStats(c *fiber.Ctx) error {
+	stats, err := h.fileService.FormatStats(c.Context())
+	if err != nil {
+		h.logger.Error("format stats", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get format stats")
+	}
+	return respondSuccess(c, fiber.StatusOK, stats, nil)
+}
+
+// GET /api/v1/users/me/recommendations
+func (h *FileHandler) Recommendations(c *fiber.Ctx) error {
+	userID := middleware.GetUserID(c)
+	limit := c.QueryInt("limit", 10)
+	if limit > 30 {
+		limit = 30
+	}
+	files, err := h.fileService.RecommendedFiles(c.Context(), userID, limit)
+	if err != nil {
+		h.logger.Error("recommendations", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get recommendations")
+	}
+	h.fileService.EnrichWithReadingStatus(c.Context(), files, userID)
+	h.fileService.EnrichWithLikeStatus(c.Context(), files, userID)
+	return respondSuccess(c, fiber.StatusOK, files, nil)
+}
+
+// GET /api/v1/files/suggestions?q=...
+func (h *FileHandler) SearchSuggestions(c *fiber.Ctx) error {
+	q := c.Query("q")
+	if len(q) < 2 {
+		return respondSuccess(c, fiber.StatusOK, []interface{}{}, nil)
+	}
+	suggestions, err := h.fileService.SearchSuggestions(c.Context(), q)
+	if err != nil {
+		h.logger.Error("search suggestions", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to get suggestions")
+	}
+	return respondSuccess(c, fiber.StatusOK, suggestions, nil)
 }

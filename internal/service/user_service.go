@@ -88,9 +88,13 @@ func (s *UserService) GetScanProfileByDeviceHash(ctx context.Context, publicIDHe
 		return nil, err
 	}
 	return &domain.ScanProfile{
-		ScanAlias:     user.ScanAlias,
-		ScanAvatarURL: user.ScanAvatarURL,
-		DeviceHash:    user.DevicePublicID,
+		UserID:     user.ID,
+		Username:   user.Username,
+		FullName:   user.FullName,
+		AvatarURL:  user.AvatarURL,
+		Bio:        user.Bio,
+		IsVerified: user.IsVerified,
+		DeviceHash: user.DevicePublicID,
 	}, nil
 }
 

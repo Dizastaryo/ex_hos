@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/seeu/backend/internal/domain"
@@ -76,6 +77,9 @@ func (h *ChatHandler) CreateChat(c *fiber.Ctx) error {
 			if errors.Is(err, domain.ErrInvalidInput) {
 				return respondError(c, fiber.StatusBadRequest, "invalid group input")
 			}
+			if errors.Is(err, domain.ErrGroupFull) {
+				return respondError(c, fiber.StatusConflict, "group cannot exceed 500 participants")
+			}
 			h.logger.Error("create group", zap.Error(err))
 			return respondError(c, fiber.StatusInternalServerError, "failed to create group")
 		}
@@ -133,6 +137,9 @@ func (h *ChatHandler) AddGroupMember(c *fiber.Ctx) error {
 		if errors.Is(err, domain.ErrInvalidInput) {
 			return respondError(c, fiber.StatusBadRequest, "not a group chat")
 		}
+		if errors.Is(err, domain.ErrGroupFull) {
+			return respondError(c, fiber.StatusConflict, "group cannot exceed 500 participants")
+		}
 		h.logger.Error("add group member", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to add member")
 	}
@@ -174,8 +181,11 @@ func (h *ChatHandler) LeaveGroup(c *fiber.Ctx) error {
 		if errors.Is(err, domain.ErrInvalidInput) {
 			return respondError(c, fiber.StatusBadRequest, "not a group chat")
 		}
-		// Игнорируем ErrLastAdmin — пользователь сам себя удаляет, разрешаем
-		h.logger.Warn("leave group", zap.String("chat_id", chatID), zap.String("user_id", userID), zap.Error(err))
+		// ErrLastAdmin при self-leave сервис не возвращает (guard пропускается
+		// когда callerID == targetID), поэтому любая оставшаяся ошибка —
+		// реальная проблема (БД недоступна, чат не найден и т.п.).
+		h.logger.Error("leave group", zap.String("chat_id", chatID), zap.String("user_id", userID), zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to leave group")
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
 }
@@ -208,7 +218,10 @@ func (h *ChatHandler) PinMessage(c *fiber.Ctx) error {
 // DeleteMessage godoc
 // DELETE /api/v1/chat-messages/:id?scope=all|self
 //
-// scope=all (default): мягкое удаление для всех — только автор + в первый час.
+// Устаревший маршрут — используйте DELETE /api/v1/chats/:id/messages/:message_id.
+// Оставлен для обратной совместимости; поведение идентично новому маршруту.
+//
+// scope=all (default): мягкое удаление для всех — только автор + в первые 24 часа.
 //   Все участники видят «Сообщение удалено» вместо содержимого.
 // scope=self: скрыть только для себя — любой участник, любое время.
 func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
@@ -236,7 +249,7 @@ func (h *ChatHandler) DeleteMessage(c *fiber.Ctx) error {
 			return respondError(c, fiber.StatusNotFound, "message not found")
 		}
 		if errors.Is(err, domain.ErrForbidden) {
-			return respondError(c, fiber.StatusForbidden, "только автор может удалить сообщение в первый час")
+			return respondError(c, fiber.StatusForbidden, "только автор может удалить сообщение в первые 24 часа")
 		}
 		h.logger.Error("delete message", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed")
@@ -288,6 +301,10 @@ func (h *ChatHandler) UpdateGroup(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return respondError(c, fiber.StatusBadRequest, "invalid body")
 	}
+	if strings.TrimSpace(req.Title) == "" {
+		return respondError(c, fiber.StatusBadRequest, "title is required")
+	}
+	req.Title = strings.TrimSpace(req.Title)
 	if err := h.chatService.UpdateGroup(c.Context(), chatID, userID, req.Title, req.CoverURL); err != nil {
 		if errors.Is(err, domain.ErrForbidden) {
 			return respondError(c, fiber.StatusForbidden, "admin only")
@@ -312,11 +329,12 @@ func (h *ChatHandler) GetMessages(c *fiber.Ctx) error {
 
 	limit := c.QueryInt("limit", 50)
 	offset := c.QueryInt("offset", 0)
+	beforeID := strings.TrimSpace(c.Query("before_id", ""))
 	q := strings.TrimSpace(c.Query("q", ""))
 
-	msgs, err := h.chatService.GetMessages(c.Context(), chatID, userID, limit, offset, q)
+	msgs, err := h.chatService.GetMessages(c.Context(), chatID, userID, limit, offset, beforeID, q)
 	if err != nil {
-		if strings.Contains(err.Error(), "not a participant") {
+		if errors.Is(err, domain.ErrNotParticipant) {
 			return respondError(c, fiber.StatusForbidden, "not a participant of this conversation")
 		}
 		h.logger.Error("get messages", zap.Error(err))
@@ -354,7 +372,8 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 		Waveform             []float64 `json:"waveform,omitempty"`
 		ReplyToMessageID     *string   `json:"reply_to_message_id,omitempty"`
 		ForwardedFromMessageID string  `json:"forwarded_from_message_id,omitempty"`
-		ForwardedFromSender    string  `json:"forwarded_from_sender,omitempty"`
+		// ForwardedFromSender намеренно не принимается от клиента —
+		// сервер резолвит username отправителя самостоятельно по ForwardedFromMessageID.
 		// CHAT-11: TTL в секундах. nil/0 = вечно. Допустимые значения
 		// фронт-стороной — 3600/86400/604800 (1ч/24ч/7д), но бэк принимает
 		// любое положительное int. Capping на 30 дней чтобы предотвратить
@@ -389,7 +408,7 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 		ReplyToMessageID:       req.ReplyToMessageID,
 		ExpiresInSeconds:       req.ExpiresInSeconds,
 		ForwardedFromMessageID: req.ForwardedFromMessageID,
-		ForwardedFromSender:    req.ForwardedFromSender,
+		// ForwardedFromSender не берётся из запроса — сервис заполнит его сам.
 	}
 	if hasPost {
 		input.AttachedPostID = req.AttachedPostID
@@ -397,7 +416,7 @@ func (h *ChatHandler) SendMessage(c *fiber.Ctx) error {
 
 	msg, err := h.chatService.SendMessage(c.Context(), chatID, userID, input)
 	if err != nil {
-		if strings.Contains(err.Error(), "not a participant") {
+		if errors.Is(err, domain.ErrNotParticipant) {
 			return respondError(c, fiber.StatusForbidden, "not a participant of this conversation")
 		}
 		h.logger.Error("send message", zap.Error(err))
@@ -478,10 +497,8 @@ func (h *ChatHandler) React(c *fiber.Ctx) error {
 	if emoji == "" {
 		return respondError(c, fiber.StatusBadRequest, "emoji is required")
 	}
-	// Cap at 8 bytes — emoji codepoints are typically 4 bytes (with VS16
-	// modifier 7-8). Anything bigger is abuse.
-	if len(emoji) > 16 {
-		return respondError(c, fiber.StatusBadRequest, "emoji too long")
+	if !isValidEmoji(emoji) {
+		return respondError(c, fiber.StatusBadRequest, "invalid emoji: must be a unicode emoji, not plain text")
 	}
 
 	counts, mine, err := h.chatService.SetReaction(c.Context(), messageID, userID, emoji)
@@ -611,7 +628,7 @@ func (h *ChatHandler) MarkRead(c *fiber.Ctx) error {
 	chatID := c.Params("id")
 
 	if err := h.chatService.MarkRead(c.Context(), chatID, userID); err != nil {
-		if strings.Contains(err.Error(), "not a participant") {
+		if errors.Is(err, domain.ErrNotParticipant) {
 			return respondError(c, fiber.StatusForbidden, "not a participant of this conversation")
 		}
 		h.logger.Error("mark read", zap.Error(err))
@@ -619,4 +636,34 @@ func (h *ChatHandler) MarkRead(c *fiber.Ctx) error {
 	}
 
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"message": "marked as read"}, nil)
+}
+
+// isValidEmoji returns true when s contains only unicode emoji codepoints
+// (no ASCII printable chars). This prevents clients from sending plain text
+// like ":)" or "lol" as a reaction emoji.
+//
+// Allowed rune categories:
+//   - U+231A–U+FFFF  — Misc Symbols, Dingbats, CJK symbols, etc.
+//   - U+1F300+       — Emoticons, Symbols & Pictographs, etc.
+//   - U+200D         — Zero Width Joiner (used in family/profession emoji)
+//   - U+FE0F         — Variation Selector-16 (emoji presentation)
+//   - U+20E3         — Combining Enclosing Keycap
+func isValidEmoji(s string) bool {
+	if !utf8.ValidString(s) || len(s) == 0 || len(s) > 32 {
+		return false
+	}
+	hasEmoji := false
+	for _, r := range s {
+		switch {
+		case r == 0x200D || r == 0xFE0F || r == 0x20E3:
+			// ZWJ / VS-16 / keycap combiner — allowed as modifiers
+		case r >= 0x231A:
+			// Any non-ASCII symbol/emoji codepoint
+			hasEmoji = true
+		default:
+			// ASCII or low unicode — reject
+			return false
+		}
+	}
+	return hasEmoji
 }

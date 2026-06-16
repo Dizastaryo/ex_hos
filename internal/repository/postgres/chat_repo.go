@@ -358,13 +358,17 @@ func (r *ChatRepository) GetConversations(ctx context.Context, userID string) ([
 // q — optional substring filter, ILIKE %q% по полю text (CHAT-3 search).
 // Пустая строка = без фильтра. Pagination limit/offset работает поверх
 // отфильтрованного set'а.
-func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, currentUserID string, limit, offset int, q string) ([]ChatMessage, error) {
+func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, currentUserID string, limit, offset int, beforeID, q string) ([]ChatMessage, error) {
 	// counts через LEFT JOIN LATERAL — один pass на message-recipients table
 	// per row. Для 50 messages × 4 group-participants = 200 reads index-only.
 	// is_read / is_delivered computed из counts (drop reliance on legacy
 	// columns; CHAT-10.2). expires_at — CHAT-11 disappearing; фильтруем
 	// `(expires_at IS NULL OR expires_at > NOW())` чтобы клиент не получил
 	// сообщения которые janitor ещё не удалил.
+	//
+	// Пагинация: если передан beforeID — cursor-based (WHERE created_at < cursor),
+	// иначе OFFSET. Cursor-пагинация устойчива к WS-доставке новых сообщений
+	// в state (offset расходился бы при этом).
 	query := `
 		SELECT m.id, m.conversation_id, m.sender_id, m.text,
 		       (mc.read_count > 0)      AS is_read,
@@ -405,10 +409,20 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 		query += fmt.Sprintf(` AND m.text ILIKE $%d`, len(args)+1)
 		args = append(args, "%"+q+"%")
 	}
-	query += ` ORDER BY m.created_at ASC LIMIT $` +
-		fmt.Sprintf("%d", len(args)+1) + ` OFFSET $` +
-		fmt.Sprintf("%d", len(args)+2)
-	args = append(args, limit, offset)
+	if beforeID != "" {
+		// Cursor-пагинация: возвращаем сообщения строго старше курсора.
+		// DESC + LIMIT чтобы взять N ближайших к курсору; потом reverse в Go
+		// чтобы вернуть их в ASC-порядке (как ожидает клиент).
+		query += fmt.Sprintf(` AND m.created_at < (SELECT created_at FROM messages WHERE id = $%d)`, len(args)+1)
+		args = append(args, beforeID)
+		query += fmt.Sprintf(` ORDER BY m.created_at DESC LIMIT $%d`, len(args)+1)
+		args = append(args, limit)
+	} else {
+		query += ` ORDER BY m.created_at ASC LIMIT $` +
+			fmt.Sprintf("%d", len(args)+1) + ` OFFSET $` +
+			fmt.Sprintf("%d", len(args)+2)
+		args = append(args, limit, offset)
+	}
 
 	rows, err := r.db.Pool.Query(ctx, query, args...)
 	if err != nil {
@@ -518,6 +532,14 @@ func (r *ChatRepository) GetMessages(ctx context.Context, conversationID, curren
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// При cursor-режиме (beforeID != "") запрос использует DESC чтобы взять
+	// N ближайших к курсору. Разворачиваем в ASC для единообразия с клиентом.
+	if beforeID != "" {
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
 	}
 
 	// Hydrate reactions in one extra query — cheaper than per-message join.
@@ -1033,6 +1055,18 @@ func (r *ChatRepository) GetMessageSender(ctx context.Context, messageID string)
 	return senderID, conversationID, nil
 }
 
+// GetForwardedSenderUsername возвращает username отправителя сообщения —
+// используется сервисом для заполнения forwarded_from_sender без доверия клиенту.
+// Если сообщение не найдено — возвращает пустую строку без ошибки (non-critical).
+func (r *ChatRepository) GetForwardedSenderUsername(ctx context.Context, messageID string) string {
+	var username string
+	_ = r.db.Pool.QueryRow(ctx,
+		`SELECT u.username FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = $1`,
+		messageID,
+	).Scan(&username)
+	return username
+}
+
 // DeleteMessage помечает сообщение как удалённое для всех (soft delete).
 // Контент скрывается от всех participants, kind становится "deleted".
 // Hard DELETE больше не используется для ручного удаления — только janitor
@@ -1420,6 +1454,18 @@ func (r *ChatRepository) RemoveParticipant(ctx context.Context, conversationID, 
 
 // CountAdmins — сколько admin'ов в group-чате. Используется last-admin-
 // защитой в Remove/ChangeRole, чтобы не оставлять чат без управления.
+func (r *ChatRepository) CountParticipants(ctx context.Context, conversationID string) (int, error) {
+	var n int
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = $1`,
+		conversationID,
+	).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count participants: %w", err)
+	}
+	return n, nil
+}
+
 func (r *ChatRepository) CountAdmins(ctx context.Context, conversationID string) (int, error) {
 	var n int
 	err := r.db.Pool.QueryRow(ctx, `

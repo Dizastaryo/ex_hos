@@ -196,7 +196,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
-		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_emoji, ''), COALESCE(scan_status, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE id = $1`
 
@@ -210,7 +210,7 @@ func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
-		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_emoji, ''), COALESCE(scan_status, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE phone = $1`
 
@@ -224,7 +224,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*d
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
-		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_emoji, ''), COALESCE(scan_status, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users WHERE username = $1`
 
@@ -335,7 +335,7 @@ func (r *UserRepository) GetByDevicePublicID(ctx context.Context, publicID strin
 		       is_private, is_verified, posts_count, followers_count, following_count,
 		       last_seen_at, COALESCE(hide_last_seen, false),
 		       COALESCE(channel_about, ''), COALESCE(channel_banner_url, ''),
-		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_enabled, true),
+		       COALESCE(scan_alias, ''), COALESCE(scan_avatar_url, ''), COALESCE(scan_emoji, ''), COALESCE(scan_status, ''), COALESCE(scan_enabled, true),
 		       created_at, updated_at
 		FROM users
 		WHERE device_public_id = $1
@@ -354,7 +354,7 @@ func (r *UserRepository) scanUser(ctx context.Context, query string, arg interfa
 		&user.FollowersCount, &user.FollowingCount,
 		&user.LastSeenAt, &user.HideLastSeen,
 		&user.ChannelAbout, &user.ChannelBannerURL,
-		&user.ScanAlias, &user.ScanAvatarURL, &user.ScanEnabled,
+		&user.ScanAlias, &user.ScanAvatarURL, &user.ScanEmoji, &user.ScanStatus, &user.ScanEnabled,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {

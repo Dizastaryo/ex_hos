@@ -1,0 +1,1 @@
+ALTER TABLE file_ratings ADD COLUMN IF NOT EXISTS review_text TEXT NOT NULL DEFAULT '';

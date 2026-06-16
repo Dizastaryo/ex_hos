@@ -383,12 +383,25 @@ func seedVideoCategories(ctx context.Context, tx pgx.Tx) error {
 }
 
 func seedFileCategories(ctx context.Context, tx pgx.Tx) error {
-	cats := []string{"Документы", "Аудио", "Видео", "Изображения", "Прочее"}
-	for i, name := range cats {
+	// Соответствует категориям из migration 000082 (только правильные форматы:
+	// pdf, epub, fb2, docx, pptx, txt, rtf, md, odt, odp — без аудио/видео/zip).
+	type cat struct {
+		name      string
+		slug      string
+		sortOrder int
+	}
+	cats := []cat{
+		{"Книги", "books", 1},
+		{"Учёба", "study", 2},
+		{"Работа", "work", 3},
+		{"Заметки", "notes", 4},
+		{"Другое", "other", 5},
+	}
+	for i, c := range cats {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO file_categories (id, name) VALUES ($1,$2)
-			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
-			uid(pFileCat, i+1), name)
+			INSERT INTO file_categories (id, name, slug, sort_order) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, slug = EXCLUDED.slug, sort_order = EXCLUDED.sort_order`,
+			uid(pFileCat, i+1), c.name, c.slug, c.sortOrder)
 		if err != nil {
 			return err
 		}
@@ -815,18 +828,18 @@ func seedFiles(ctx context.Context, tx pgx.Tx) error {
 		path     string // путь в R2 (без ведущего /)
 		sizeB    int64  // приблизительный размер (bytes) — используется если файл не найден локально
 	}{
-		{1, 2, 1, "План проекта.pdf", "application/pdf", "uploads/seed/library/project_plan.pdf", 512 * 1024},
+		{1, 2, 3, "План проекта.pdf", "application/pdf", "uploads/seed/library/project_plan.pdf", 512 * 1024},
 		{2, 6, 1, "Книга рецептов.pdf", "application/pdf", "uploads/seed/library/recipe_book.pdf", 2 * 1024 * 1024},
-		{3, 7, 4, "Набор кистей.zip", "application/zip", "uploads/seed/library/brushes_pack.zip", 8 * 1024 * 1024},
-		{4, 10, 2, "Лайв-микс.mp3", "audio/mpeg", "uploads/seed/library/live_mix.mp3", 15 * 1024 * 1024},
-		{5, 5, 1, "Программа тренировок.pdf", "application/pdf", "uploads/seed/library/workout_plan.pdf", 384 * 1024},
-		{6, 1, 4, "Обои Алматы.zip", "application/zip", "uploads/seed/library/almaty_wallpapers.zip", 12 * 1024 * 1024},
+		{3, 7, 4, "Конспект по дизайну.pdf", "application/pdf", "uploads/seed/library/design_notes.pdf", 1 * 1024 * 1024},
+		{4, 10, 2, "Лекция по маркетингу.pdf", "application/pdf", "uploads/seed/library/marketing_lecture.pdf", 768 * 1024},
+		{5, 5, 3, "Программа тренировок.pdf", "application/pdf", "uploads/seed/library/workout_plan.pdf", 384 * 1024},
+		{6, 1, 1, "Путеводитель по Алматы.pdf", "application/pdf", "uploads/seed/library/almaty_guide.pdf", 3 * 1024 * 1024},
 		{7, 3, 1, "Гид путешественника.pdf", "application/pdf", "uploads/seed/library/travel_guide.pdf", 1024 * 1024},
-		{8, 4, 1, "Советы по фотографии.pdf", "application/pdf", "uploads/seed/library/photography_tips.pdf", 768 * 1024},
-		{9, 10, 1, "Основы теории музыки.pdf", "application/pdf", "uploads/seed/library/music_theory.pdf", 896 * 1024},
-		{10, 4, 4, "Фото-гид по Алматы.zip", "application/zip", "uploads/seed/library/photo_guide.zip", 18 * 1024 * 1024},
-		{11, 6, 5, "Гид по ресторанам.zip", "application/zip", "uploads/seed/library/restaurant_guide.zip", 5 * 1024 * 1024},
-		{12, 10, 2, "Чилл-микс.mp3", "audio/mpeg", "uploads/seed/library/chill_mix.mp3", 12 * 1024 * 1024},
+		{8, 4, 2, "Советы по фотографии.pdf", "application/pdf", "uploads/seed/library/photography_tips.pdf", 768 * 1024},
+		{9, 10, 2, "Основы теории музыки.pdf", "application/pdf", "uploads/seed/library/music_theory.pdf", 896 * 1024},
+		{10, 4, 4, "Дневник путешественника.pdf", "application/pdf", "uploads/seed/library/travel_diary.pdf", 1200 * 1024},
+		{11, 6, 5, "Гид по ресторанам Алматы.pdf", "application/pdf", "uploads/seed/library/restaurant_guide.pdf", 5 * 1024 * 1024},
+		{12, 10, 1, "Сборник стихов.pdf", "application/pdf", "uploads/seed/library/poetry_collection.pdf", 640 * 1024},
 	}
 	for _, f := range files {
 		size := f.sizeB

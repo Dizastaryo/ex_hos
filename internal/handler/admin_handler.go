@@ -1,18 +1,24 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/repository/postgres"
 	"github.com/seeu/backend/internal/service"
+	jwtpkg "github.com/seeu/backend/pkg/jwt"
 )
 
 // AdminHandler powers the admin web bundle (admin.seeu.kz). All routes here
 // must be mounted behind middleware.Auth + middleware.AdminOnly.
 type AdminHandler struct {
-	pool       interface{} // unused — kept for future direct-SQL admin ops
+	db         *pgxpool.Pool
+	jwtManager *jwtpkg.Manager
 	userRepo   *postgres.UserRepository
 	reportRepo *postgres.ReportRepository
 	auditRepo  *postgres.AuditRepository
@@ -24,6 +30,8 @@ type AdminHandler struct {
 }
 
 func NewAdminHandler(
+	db *pgxpool.Pool,
+	jwtManager *jwtpkg.Manager,
 	userRepo *postgres.UserRepository,
 	reportRepo *postgres.ReportRepository,
 	auditRepo *postgres.AuditRepository,
@@ -34,6 +42,8 @@ func NewAdminHandler(
 	logger *zap.Logger,
 ) *AdminHandler {
 	return &AdminHandler{
+		db:         db,
+		jwtManager: jwtManager,
 		userRepo:   userRepo,
 		reportRepo: reportRepo,
 		auditRepo:  auditRepo,
@@ -43,6 +53,44 @@ func NewAdminHandler(
 		deviceSvc:  deviceSvc,
 		logger:     logger,
 	}
+}
+
+// AdminLogin handles POST /admin/login — login+password auth for admin panel.
+func (h *AdminHandler) AdminLogin(c *fiber.Ctx) error {
+	var req struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	if req.Login == "" || req.Password == "" {
+		return respondError(c, fiber.StatusBadRequest, "login and password are required")
+	}
+
+	var passwordHash string
+	var userID string
+	err := h.db.QueryRow(context.Background(),
+		`SELECT password_hash, user_id FROM admin_accounts WHERE login = $1`,
+		req.Login,
+	).Scan(&passwordHash, &userID)
+	if err != nil {
+		return respondError(c, fiber.StatusUnauthorized, "invalid login or password")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+		return respondError(c, fiber.StatusUnauthorized, "invalid login or password")
+	}
+
+	accessToken, err := h.jwtManager.GenerateAccessToken(userID)
+	if err != nil {
+		h.logger.Error("admin login: generate token", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to generate token")
+	}
+
+	return respondSuccess(c, fiber.StatusOK, fiber.Map{
+		"access_token": accessToken,
+	}, nil)
 }
 
 // audit writes one row asynchronously-style: errors are logged but do NOT

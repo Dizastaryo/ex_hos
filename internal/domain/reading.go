@@ -46,3 +46,15 @@ type CreateBookmarkRequest struct {
 type UpsertReadingStatusRequest struct {
 	Status string `json:"status" validate:"required,oneof=want reading done"`
 }
+
+type ReadingGoal struct {
+	UserID    string    `json:"user_id"`
+	Year      int       `json:"year"`
+	GoalBooks int       `json:"goal_books"`
+	DoneBooks int       `json:"done_books"` // computed: files with status='done' this year
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type UpsertReadingGoalRequest struct {
+	GoalBooks int `json:"goal_books" validate:"required,min=1,max=1000"`
+}

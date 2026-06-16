@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/seeu/backend/internal/domain"
@@ -359,7 +361,8 @@ func (h *RoomHandler) GetMessages(c *fiber.Ctx) error {
 	id := c.Params("id")
 	userID := middleware.GetUserID(c)
 	page, limit := pagination.ParsePage(c.Query("page", "1"), c.Query("limit", "50"))
-	items, meta, err := h.svc.GetMessages(c.Context(), id, userID, page, limit)
+	q := strings.TrimSpace(c.Query("q"))
+	items, meta, err := h.svc.GetMessages(c.Context(), id, userID, page, limit, q)
 	if err != nil {
 		if err == domain.ErrForbidden {
 			return respondError(c, fiber.StatusForbidden, "access denied")
@@ -385,6 +388,9 @@ func (h *RoomHandler) SendMessage(c *fiber.Ctx) error {
 	if req.Text == "" && req.AttachedMediaURL == "" {
 		return respondError(c, fiber.StatusBadRequest, "text or attached_media_url is required")
 	}
+	if len(req.Text) > 4096 {
+		return respondError(c, fiber.StatusBadRequest, "message text exceeds 4096 characters")
+	}
 	if req.Kind == "" {
 		if req.AttachedMediaURL != "" {
 			req.Kind = "sticker"
@@ -406,4 +412,30 @@ func (h *RoomHandler) SendMessage(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusInternalServerError, "failed to send message")
 	}
 	return respondSuccess(c, fiber.StatusCreated, msg, nil)
+}
+
+// POST /api/v1/rooms/:id/messages/:msgId/react
+func (h *RoomHandler) ReactMessage(c *fiber.Ctx) error {
+	roomID := c.Params("id")
+	msgID := c.Params("msgId")
+	userID := middleware.GetUserID(c)
+
+	var req struct {
+		Emoji string `json:"emoji" validate:"required"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return respondError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+	req.Emoji = strings.TrimSpace(req.Emoji)
+	if req.Emoji == "" {
+		return respondError(c, fiber.StatusBadRequest, "emoji is required")
+	}
+	if err := h.svc.React(c.Context(), roomID, msgID, userID, req.Emoji); err != nil {
+		if err == domain.ErrForbidden {
+			return respondError(c, fiber.StatusForbidden, "access denied")
+		}
+		h.logger.Error("react room message", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to react")
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }

@@ -21,6 +21,20 @@ func NewRoomService(repo *postgres.RoomRepository, hub *ws.Hub, logger *zap.Logg
 	return &RoomService{repo: repo, hub: hub, logger: logger}
 }
 
+// participantIDs fetches room participant IDs for broadcasting.
+// Logs a warning on error instead of silently swallowing it.
+func (s *RoomService) participantIDs(ctx context.Context, roomID string) []string {
+	ids, err := s.repo.GetParticipantIDs(ctx, roomID)
+	if err != nil {
+		s.logger.Warn("failed to get participant IDs for broadcast",
+			zap.String("room_id", roomID),
+			zap.Error(err),
+		)
+		return nil
+	}
+	return ids
+}
+
 func (s *RoomService) Create(ctx context.Context, creatorID string, req *domain.CreateRoomRequest) (*domain.Room, error) {
 	// All rooms are voice — regardless of what the client sends.
 	req.Type = "voice"
@@ -60,7 +74,7 @@ func (s *RoomService) Join(ctx context.Context, roomID, userID string) (*domain.
 	if !room.IsActive {
 		return nil, domain.ErrRoomClosed
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.joined", map[string]any{
 		"room_id":  roomID,
 		"user_id":  userID,
@@ -90,7 +104,7 @@ func (s *RoomService) AcceptInvite(ctx context.Context, inviteID, userID string)
 		"room_id": inv.RoomID,
 	})
 	// Notify existing members that someone joined.
-	ids, _ := s.repo.GetParticipantIDs(ctx, inv.RoomID)
+	ids := s.participantIDs(ctx, inv.RoomID)
 	s.hub.SendToUsers(ids, "room.member_added", map[string]any{
 		"room_id": inv.RoomID,
 		"user_id": userID,
@@ -119,7 +133,7 @@ func (s *RoomService) RemoveMember(ctx context.Context, roomID, requesterID, tar
 		"room_id": roomID,
 	})
 	// Notify remaining members.
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.member_removed", map[string]any{
 		"room_id": roomID,
 		"user_id": targetID,
@@ -137,7 +151,7 @@ func (s *RoomService) Leave(ctx context.Context, roomID, userID string) error {
 	if err := s.repo.Leave(ctx, roomID, userID); err != nil {
 		return err // preserve sentinel errors (ErrForbidden, ErrRoomNotFound)
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	ids = append(ids, userID)
 	s.hub.SendToUsers(ids, "room.left", map[string]any{
 		"room_id": roomID,
@@ -152,7 +166,7 @@ func (s *RoomService) JoinVoice(ctx context.Context, roomID, userID string) erro
 	if err := s.repo.JoinVoice(ctx, roomID, userID); err != nil {
 		return err
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.voice.joined", map[string]any{
 		"room_id": roomID,
 		"user_id": userID,
@@ -166,7 +180,7 @@ func (s *RoomService) LeaveVoice(ctx context.Context, roomID, userID string) err
 	if err := s.repo.LeaveVoice(ctx, roomID, userID); err != nil {
 		return err
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.voice.left", map[string]any{
 		"room_id": roomID,
 		"user_id": userID,
@@ -175,15 +189,11 @@ func (s *RoomService) LeaveVoice(ctx context.Context, roomID, userID string) err
 }
 
 func (s *RoomService) ToggleMute(ctx context.Context, roomID, userID string) (bool, error) {
-	muted, err := s.repo.IsMuted(ctx, roomID, userID)
+	newMuted, err := s.repo.ToggleMute(ctx, roomID, userID)
 	if err != nil {
 		return false, err
 	}
-	newMuted := !muted
-	if err := s.repo.SetMuted(ctx, roomID, userID, newMuted); err != nil {
-		return false, fmt.Errorf("set muted: %w", err)
-	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.muted", map[string]any{
 		"room_id":  roomID,
 		"user_id":  userID,
@@ -201,7 +211,7 @@ func (s *RoomService) Update(ctx context.Context, roomID, requesterID string, re
 		return nil, err
 	}
 	// Notify all members of the update
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.updated", map[string]any{
 		"room_id":     roomID,
 		"name":        room.Name,
@@ -215,7 +225,7 @@ func (s *RoomService) SetAdmin(ctx context.Context, roomID, requesterID, targetI
 	if err := s.repo.SetAdmin(ctx, roomID, requesterID, targetID, grant); err != nil {
 		return err
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.admin_changed", map[string]any{
 		"room_id":  roomID,
 		"user_id":  targetID,
@@ -232,7 +242,7 @@ func (s *RoomService) Close(ctx context.Context, roomID, userID string) error {
 	if room.CreatorID != userID {
 		return domain.ErrForbidden
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	if err := s.repo.Close(ctx, roomID); err != nil {
 		return fmt.Errorf("close room: %w", err)
 	}
@@ -257,7 +267,7 @@ func (s *RoomService) SendMessage(ctx context.Context, roomID, senderID, text, k
 	if err != nil {
 		return nil, err
 	}
-	ids, _ := s.repo.GetParticipantIDs(ctx, roomID)
+	ids := s.participantIDs(ctx, roomID)
 	s.hub.SendToUsers(ids, "room.message", map[string]any{
 		"room_id": roomID,
 		"message": msg,
@@ -265,16 +275,17 @@ func (s *RoomService) SendMessage(ctx context.Context, roomID, senderID, text, k
 	return msg, nil
 }
 
-func (s *RoomService) GetMessages(ctx context.Context, roomID, viewerID string, page, limit int) ([]*domain.RoomMessage, pagination.Meta, error) {
+func (s *RoomService) GetMessages(ctx context.Context, roomID, viewerID string, page, limit int, q string) ([]*domain.RoomMessage, pagination.Meta, error) {
 	// Only members may read messages.
-	if _, err := s.repo.IsMuted(ctx, roomID, viewerID); err != nil {
-		if err == domain.ErrNotInRoom {
-			return nil, pagination.Meta{}, domain.ErrForbidden
-		}
+	ok, err := s.repo.IsParticipant(ctx, roomID, viewerID)
+	if err != nil {
 		return nil, pagination.Meta{}, err
 	}
+	if !ok {
+		return nil, pagination.Meta{}, domain.ErrForbidden
+	}
 	offset := pagination.Offset(page, limit)
-	items, err := s.repo.GetMessages(ctx, roomID, limit+1, offset)
+	items, err := s.repo.GetMessagesForViewer(ctx, roomID, viewerID, limit+1, offset, q)
 	if err != nil {
 		return nil, pagination.Meta{}, err
 	}
@@ -283,4 +294,28 @@ func (s *RoomService) GetMessages(ctx context.Context, roomID, viewerID string, 
 		items = items[:limit]
 	}
 	return items, pagination.Meta{Page: page, Limit: limit, HasNextPage: hasNext}, nil
+}
+
+// React adds/removes a reaction to a room message. Broadcasts room.reaction to all participants.
+func (s *RoomService) React(ctx context.Context, roomID, msgID, userID, emoji string) error {
+	ok, err := s.repo.IsParticipant(ctx, roomID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrForbidden
+	}
+	added, err := s.repo.ReactMessage(ctx, msgID, userID, emoji)
+	if err != nil {
+		return err
+	}
+	ids := s.participantIDs(ctx, roomID)
+	s.hub.SendToUsers(ids, "room.reaction", map[string]any{
+		"room_id":    roomID,
+		"message_id": msgID,
+		"user_id":    userID,
+		"emoji":      emoji,
+		"added":      added,
+	})
+	return nil
 }

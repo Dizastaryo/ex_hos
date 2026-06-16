@@ -22,7 +22,19 @@ func (r *CollectionRepository) GetUserCollections(ctx context.Context, userID st
 		SELECT c.id, c.user_id, c.name, c.description,
 		       COALESCE(c.cover_file_id::text, ''),
 		       COUNT(cf.file_id) AS files_count,
-		       c.created_at, c.updated_at
+		       c.created_at, c.updated_at,
+		       COALESCE(
+		           ARRAY(
+		               SELECT COALESCE(f.cover_url, '')
+		               FROM collection_files cf2
+		               JOIN files f ON f.id = cf2.file_id
+		               WHERE cf2.collection_id = c.id
+		                 AND f.cover_url IS NOT NULL AND f.cover_url <> ''
+		               ORDER BY cf2.added_at DESC
+		               LIMIT 4
+		           ),
+		           '{}'::text[]
+		       ) AS cover_urls
 		FROM collections c
 		LEFT JOIN collection_files cf ON cf.collection_id = c.id
 		WHERE c.user_id = $1
@@ -35,12 +47,13 @@ func (r *CollectionRepository) GetUserCollections(ctx context.Context, userID st
 
 	var out []*domain.Collection
 	for rows.Next() {
-		c := &domain.Collection{}
-		if err := rows.Scan(&c.ID, &c.UserID, &c.Name, &c.Description,
-			&c.CoverFileID, &c.FilesCount, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		col := &domain.Collection{}
+		if err := rows.Scan(&col.ID, &col.UserID, &col.Name, &col.Description,
+			&col.CoverFileID, &col.FilesCount, &col.CreatedAt, &col.UpdatedAt,
+			&col.CoverURLs); err != nil {
 			return nil, err
 		}
-		out = append(out, c)
+		out = append(out, col)
 	}
 	return out, nil
 }
@@ -71,8 +84,9 @@ func (r *CollectionRepository) GetCollectionByID(ctx context.Context, id, userID
 		       COALESCE(f.title, f.filename), COALESCE(f.author_name, ''), COALESCE(f.language, ''),
 		       f.file_url, f.mime_type, f.file_size,
 		       COALESCE(f.category_id::text, ''), f.downloads_count, f.likes_count, f.is_previewable,
-		       COALESCE(f.preview_url, ''), COALESCE(f.description, ''),
+		       COALESCE(f.preview_url, ''), COALESCE(f.cover_url, ''), COALESCE(f.description, ''),
 		       COALESCE(f.pages_count, 0), COALESCE(f.doc_format, ''),
+		       COALESCE(f.pdf_conversion_status, 'none'),
 		       f.created_at,
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM files f
@@ -166,18 +180,21 @@ func (r *CollectionRepository) RemoveFile(ctx context.Context, collectionID, fil
 
 // GetFileStats возвращает статистику файла (только для owner).
 func (r *CollectionRepository) GetFileStats(ctx context.Context, fileID string) (map[string]int, error) {
-	var downloads, likes, readers, currentlyReading int
+	var downloads, likes, readers, currentlyReading, views, ratingsCount, doneCount int
 	err := r.db.Pool.QueryRow(ctx, `
 		SELECT
 			f.downloads_count,
 			f.likes_count,
 			COUNT(DISTINCT rs.user_id),
-			COUNT(DISTINCT CASE WHEN rs.status = 'reading' THEN rs.user_id END)
+			COUNT(DISTINCT CASE WHEN rs.status = 'reading' THEN rs.user_id END),
+			COUNT(DISTINCT CASE WHEN rs.status = 'done' THEN rs.user_id END),
+			COALESCE(f.views_count, 0),
+			COALESCE(f.ratings_count, 0)
 		FROM files f
 		LEFT JOIN reading_status rs ON rs.file_id = f.id
 		WHERE f.id = $1
-		GROUP BY f.downloads_count, f.likes_count`, fileID,
-	).Scan(&downloads, &likes, &readers, &currentlyReading)
+		GROUP BY f.downloads_count, f.likes_count, f.views_count, f.ratings_count`, fileID,
+	).Scan(&downloads, &likes, &readers, &currentlyReading, &doneCount, &views, &ratingsCount)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrFileNotFound
@@ -189,5 +206,8 @@ func (r *CollectionRepository) GetFileStats(ctx context.Context, fileID string) 
 		"likes_count":       likes,
 		"readers_count":     readers,
 		"currently_reading": currentlyReading,
+		"done_count":        doneCount,
+		"views_count":       views,
+		"ratings_count":     ratingsCount,
 	}, nil
 }

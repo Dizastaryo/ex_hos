@@ -37,16 +37,20 @@ type RoomParticipant struct {
 }
 
 type RoomMessage struct {
-	ID               string    `json:"id"`
-	RoomID           string    `json:"room_id"`
-	SenderID         string    `json:"sender_id"`
-	SenderName       string    `json:"sender_name"`
-	SenderUsername   string    `json:"sender_username"`
-	SenderAvatar     string    `json:"sender_avatar_url,omitempty"`
-	Text             string    `json:"text"`
-	Kind             string    `json:"kind"`
-	AttachedMediaURL string    `json:"attached_media_url,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string         `json:"id"`
+	RoomID           string         `json:"room_id"`
+	SenderID         string         `json:"sender_id"`
+	SenderName       string         `json:"sender_name"`
+	SenderUsername   string         `json:"sender_username"`
+	SenderAvatar     string         `json:"sender_avatar_url,omitempty"`
+	Text             string         `json:"text"`
+	Kind             string         `json:"kind"`
+	AttachedMediaURL string         `json:"attached_media_url,omitempty"`
+	CreatedAt        time.Time      `json:"created_at"`
+	// Reactions: emoji → count, populated by GetMessages.
+	Reactions        map[string]int `json:"reactions,omitempty"`
+	// MyReaction is set per-viewer in GetMessages (empty = no reaction).
+	MyReaction       string         `json:"my_reaction,omitempty"`
 }
 
 type CreateRoomRequest struct {
@@ -62,9 +66,9 @@ type InviteMemberRequest struct {
 }
 
 type UpdateRoomRequest struct {
-	Name        string `json:"name"        validate:"required,min=1,max=120"`
-	Description string `json:"description" validate:"omitempty,max=500"`
-	CoverURL    string `json:"cover_url"   validate:"omitempty,max=500"`
+	Name        *string `json:"name"        validate:"omitempty,min=1,max=120"`
+	Description *string `json:"description" validate:"omitempty,max=500"`
+	CoverURL    *string `json:"cover_url"   validate:"omitempty,max=500"`
 }
 
 // RoomMember is a full member entry returned by GET /rooms/:id/members.

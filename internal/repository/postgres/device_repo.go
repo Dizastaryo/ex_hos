@@ -140,6 +140,108 @@ func (r *DeviceRepository) AdminExport(ctx context.Context) ([]*domain.BleDevice
 	return result, nil
 }
 
+// ── Private Whitelist ─────────────────────────────────────────────────────────
+
+// GetPrivateWhitelist возвращает список пользователей которым ownerID разрешил
+// видеть себя в private BLE-режиме. Возвращает только взаимных подписчиков.
+func (r *DeviceRepository) GetPrivateWhitelist(ctx context.Context, ownerID string) ([]*domain.PrivateWhitelistEntry, error) {
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT u.id, u.username, u.full_name, COALESCE(u.avatar_url, '')
+		FROM device_private_whitelist w
+		JOIN users u ON u.id = w.allowed_id
+		WHERE w.owner_id = $1
+		ORDER BY u.username`,
+		ownerID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get private whitelist: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*domain.PrivateWhitelistEntry
+	for rows.Next() {
+		e := &domain.PrivateWhitelistEntry{}
+		if err := rows.Scan(&e.UserID, &e.Username, &e.FullName, &e.AvatarURL); err != nil {
+			return nil, fmt.Errorf("scan whitelist row: %w", err)
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}
+
+// SetPrivateWhitelist заменяет whitelist ownerID на allowedIDs.
+// allowedIDs должны быть взаимными подписчиками — сервисный слой проверяет это до вызова.
+// Работает транзакционно: DELETE old + INSERT new.
+func (r *DeviceRepository) SetPrivateWhitelist(ctx context.Context, ownerID string, allowedIDs []string) error {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM device_private_whitelist WHERE owner_id = $1`, ownerID,
+	); err != nil {
+		return fmt.Errorf("delete old whitelist: %w", err)
+	}
+
+	for _, uid := range allowedIDs {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO device_private_whitelist (owner_id, allowed_id) VALUES ($1, $2)
+			 ON CONFLICT DO NOTHING`,
+			ownerID, uid,
+		); err != nil {
+			return fmt.Errorf("insert whitelist entry %s: %w", uid, err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+// FilterMutualFollowers из списка candidateIDs возвращает только тех кто
+// взаимно подписан с ownerID. Используется для валидации перед SetPrivateWhitelist.
+func (r *DeviceRepository) FilterMutualFollowers(ctx context.Context, ownerID string, candidateIDs []string) ([]string, error) {
+	if len(candidateIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Pool.Query(ctx, `
+		SELECT f1.following_id
+		FROM follows f1
+		JOIN follows f2
+		  ON f2.follower_id = f1.following_id
+		 AND f2.following_id = f1.follower_id
+		WHERE f1.follower_id = $1
+		  AND f1.following_id = ANY($2::uuid[])`,
+		ownerID, candidateIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("filter mutual followers: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan mutual id: %w", err)
+		}
+		result = append(result, id)
+	}
+	return result, nil
+}
+
+// IsInPrivateWhitelist проверяет что viewerID есть в whitelist ownerID.
+func (r *DeviceRepository) IsInPrivateWhitelist(ctx context.Context, ownerID, viewerID string) (bool, error) {
+	var exists bool
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM device_private_whitelist
+			WHERE owner_id = $1 AND allowed_id = $2
+		)`, ownerID, viewerID,
+	).Scan(&exists)
+	return exists, err
+}
+
 // SetActive деактивирует устройство (мягкое удаление).
 func (r *DeviceRepository) SetActive(ctx context.Context, id string, active bool) error {
 	tag, err := r.db.Pool.Exec(ctx,

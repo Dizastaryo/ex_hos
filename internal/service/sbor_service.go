@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/repository/postgres"
@@ -67,9 +68,9 @@ func (s *SborService) GetByID(ctx context.Context, id, viewerID string) (*domain
 	return s.repo.GetByID(ctx, id, viewerID)
 }
 
-func (s *SborService) List(ctx context.Context, viewerID, typeFilter, catFilter, cityFilter string, page, limit int) ([]*domain.Sbor, pagination.Meta, error) {
+func (s *SborService) List(ctx context.Context, viewerID, typeFilter, catFilter, cityFilter, q string, dateFrom, dateTo *time.Time, page, limit int) ([]*domain.Sbor, pagination.Meta, error) {
 	offset := pagination.Offset(page, limit)
-	items, err := s.repo.List(ctx, viewerID, typeFilter, catFilter, cityFilter, limit+1, offset)
+	items, err := s.repo.List(ctx, viewerID, typeFilter, catFilter, cityFilter, q, dateFrom, dateTo, limit+1, offset)
 	if err != nil {
 		return nil, pagination.Meta{}, err
 	}
@@ -177,8 +178,8 @@ func (s *SborService) Join(ctx context.Context, sborID, userID string) (*domain.
 		if sbor.ChatID != nil {
 			_ = s.chatRepo.AddParticipant(ctx, *sbor.ChatID, userID)
 		} else {
-			// Ретроспективно создаём group-чат если его не было
-			chatID, err := s.chatRepo.CreateGroupConversation(ctx, sbor.HostID, sbor.Title, "", []string{})
+			// Ретроспективно создаём group-чат и добавляем всех текущих участников.
+			chatID, err := s.chatRepo.CreateGroupConversation(ctx, sbor.HostID, sbor.Title, "", sbor.MemberIDs)
 			if err == nil {
 				if err := s.repo.SetChatID(ctx, sbor.ID, chatID); err == nil {
 					sbor.ChatID = &chatID
@@ -187,15 +188,13 @@ func (s *SborService) Join(ctx context.Context, sborID, userID string) (*domain.
 		}
 		return sbor, nil
 	}
-	if sbor.MaxSlots != nil && sbor.Joined >= *sbor.MaxSlots {
-		return nil, domain.ErrSborFull
-	}
 	if err := s.repo.Join(ctx, sborID, userID); err != nil {
 		return nil, fmt.Errorf("join sbor: %w", err)
 	}
-	// Создаём group-чат если его ещё нет, затем добавляем участника
+	// Создаём group-чат если его ещё нет, добавляем всех текущих участников + нового.
 	if sbor.ChatID == nil {
-		chatID, err := s.chatRepo.CreateGroupConversation(ctx, sbor.HostID, sbor.Title, "", []string{})
+		allMembers := append(sbor.MemberIDs, userID)
+		chatID, err := s.chatRepo.CreateGroupConversation(ctx, sbor.HostID, sbor.Title, "", allMembers)
 		if err == nil {
 			if err := s.repo.SetChatID(ctx, sbor.ID, chatID); err == nil {
 				sbor.ChatID = &chatID
@@ -272,6 +271,13 @@ func (s *SborService) Update(ctx context.Context, id, userID string, req *domain
 }
 
 func (s *SborService) ToggleBookmark(ctx context.Context, userID, sborID string) (bool, error) {
+	sbor, err := s.repo.GetByID(ctx, sborID, userID)
+	if err != nil {
+		return false, err
+	}
+	if sbor.HostID == userID {
+		return false, domain.ErrForbidden
+	}
 	return s.repo.ToggleBookmark(ctx, userID, sborID)
 }
 
@@ -309,26 +315,27 @@ func (s *SborService) Cancel(ctx context.Context, id, userID string) error {
 		}
 	}
 
+	// Cancel sbor and delete linked chat atomically in the repo.
 	if err := s.repo.Cancel(ctx, id, userID); err != nil {
 		return err
 	}
 
-	// Уведомляем всех участников через WS о том, что сбор отменён.
+	// Notify all participants via WS after the atomic cancel+delete succeeds.
 	if len(memberIDs) > 0 {
 		s.hub.SendToUsers(memberIDs, "sbor.cancelled", map[string]any{
 			"sbor_id": id,
 			"title":   sbor.Title,
 		})
 	}
-
-	// Удаляем связанный групповой чат — он больше не нужен.
-	if sbor.ChatID != nil {
-		if err := s.chatRepo.DeleteConversation(ctx, *sbor.ChatID); err != nil {
-			s.logger.Warn("delete sbor group chat failed",
-				zap.String("sbor_id", id),
-				zap.String("chat_id", *sbor.ChatID),
-				zap.Error(err))
-		}
-	}
 	return nil
+}
+
+// ListMembers returns all participants of a sbor. Any participant may call this.
+func (s *SborService) ListMembers(ctx context.Context, sborID, viewerID string) ([]*postgres.SborMemberDTO, error) {
+	// Verify sbor exists and viewer has access.
+	_, err := s.repo.GetByID(ctx, sborID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListMembers(ctx, sborID)
 }

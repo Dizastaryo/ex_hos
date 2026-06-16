@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS scanner_waves;
+ALTER TABLE users DROP COLUMN IF EXISTS scan_emoji;
+ALTER TABLE users DROP COLUMN IF EXISTS scan_status;

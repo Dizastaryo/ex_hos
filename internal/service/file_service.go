@@ -1,8 +1,11 @@
 package service
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -68,17 +71,63 @@ const MaxLibraryFileSize = 50 * 1024 * 1024 // 50 MB
 const libraryUploadDir = "./uploads/library"
 
 type FileService struct {
-	fileRepo  *postgres.FileRepository
-	statsRepo *postgres.UserStatsRepository
-	logger    *zap.Logger
-	r2        *storage.R2
+	fileRepo    *postgres.FileRepository
+	readingRepo *postgres.ReadingRepository
+	statsRepo   *postgres.UserStatsRepository
+	logger      *zap.Logger
+	r2          *storage.R2
 }
 
-func NewFileService(fileRepo *postgres.FileRepository, statsRepo *postgres.UserStatsRepository, logger *zap.Logger, r2 *storage.R2) *FileService {
+func NewFileService(fileRepo *postgres.FileRepository, readingRepo *postgres.ReadingRepository, statsRepo *postgres.UserStatsRepository, logger *zap.Logger, r2 *storage.R2) *FileService {
 	if r2 == nil {
 		os.MkdirAll(libraryUploadDir, 0o755)
 	}
-	return &FileService{fileRepo: fileRepo, statsRepo: statsRepo, logger: logger, r2: r2}
+	return &FileService{fileRepo: fileRepo, readingRepo: readingRepo, statsRepo: statsRepo, logger: logger, r2: r2}
+}
+
+// EnrichWithLikeStatus fills IsLiked on each file for the given viewer.
+func (s *FileService) EnrichWithLikeStatus(ctx context.Context, files []*domain.File, viewerID string) {
+	if viewerID == "" || len(files) == 0 {
+		return
+	}
+	ids := make([]string, len(files))
+	for i, f := range files {
+		ids[i] = f.ID
+	}
+	likedMap, err := s.fileRepo.IsFileLikedBatch(ctx, viewerID, ids)
+	if err != nil {
+		s.logger.Warn("enrich like status", zap.Error(err))
+		return
+	}
+	for _, f := range files {
+		f.IsLiked = likedMap[f.ID]
+	}
+}
+
+// EnrichWithReadingStatus fills ReadingStatus on each file for the given viewer.
+func (s *FileService) EnrichWithReadingStatus(ctx context.Context, files []*domain.File, viewerID string) {
+	if viewerID == "" || len(files) == 0 {
+		return
+	}
+	ids := make([]string, len(files))
+	for i, f := range files {
+		ids[i] = f.ID
+	}
+	statuses, err := s.readingRepo.GetReadingStatusBatch(ctx, viewerID, ids)
+	if err != nil {
+		s.logger.Warn("enrich reading status", zap.Error(err))
+		return
+	}
+	for _, f := range files {
+		if st, ok := statuses[f.ID]; ok {
+			f.ReadingStatus = st
+		}
+	}
+}
+
+// RecentlyRead returns the user's recently-read files.
+func (s *FileService) RecentlyRead(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	return s.readingRepo.GetRecentlyRead(ctx, userID, limit)
 }
 
 // allowedCoverMimes — MIME-типы разрешённые для обложки (изображения).
@@ -135,6 +184,59 @@ func (s *FileService) uploadCover(ctx context.Context, cover multipart.File, cov
 	_ = os.MkdirAll(dirPath, 0o755)
 	_ = os.WriteFile(filepath.Join(dirPath, hash[:16]+"."+ext), data, 0o644)
 	return "/uploads/library/covers/" + hash[:16] + "." + ext, nil
+}
+
+// epubMeta holds metadata extracted from an EPUB's OPF file.
+type epubMeta struct {
+	title    string
+	author   string
+	language string
+}
+
+// extractEpubMeta opens an EPUB zip in memory and parses the first OPF file
+// for dc:title, dc:creator and dc:language. Returns nil on any error.
+func extractEpubMeta(data []byte) *epubMeta {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil
+	}
+	for _, f := range zr.File {
+		if !strings.HasSuffix(strings.ToLower(f.Name), ".opf") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil
+		}
+		raw, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil
+		}
+
+		// Parse the minimal OPF metadata block.
+		type dcMeta struct {
+			Title    []string `xml:"metadata>title"`
+			Creator  []string `xml:"metadata>creator"`
+			Language []string `xml:"metadata>language"`
+		}
+		var m dcMeta
+		if err := xml.Unmarshal(raw, &m); err != nil {
+			return nil
+		}
+		meta := &epubMeta{}
+		if len(m.Title) > 0 {
+			meta.title = strings.TrimSpace(m.Title[0])
+		}
+		if len(m.Creator) > 0 {
+			meta.author = strings.TrimSpace(m.Creator[0])
+		}
+		if len(m.Language) > 0 {
+			meta.language = strings.TrimSpace(m.Language[0])
+		}
+		return meta
+	}
+	return nil
 }
 
 // Upload saves a multipart file blob to disk under /uploads/library/<date>/
@@ -217,6 +319,27 @@ func (s *FileService) Upload(
 	// Извлечение текста для Tier-2/3 форматов (graceful — не ломает upload)
 	extractedText := docextract.ExtractText(bytes, ext)
 
+	// Auto-extract EPUB metadata when form fields are empty
+	if ext == "epub" {
+		if meta := extractEpubMeta(bytes); meta != nil {
+			if title == "" && meta.title != "" {
+				title = meta.title
+			}
+			if authorName == "" && meta.author != "" {
+				authorName = meta.author
+			}
+			if language == "" && meta.language != "" {
+				// normalise lang codes like "en-US" → "en"
+				lang := strings.ToLower(strings.Split(meta.language, "-")[0])
+				if lang == "ru" || lang == "en" {
+					language = lang
+				} else {
+					language = "other"
+				}
+			}
+		}
+	}
+
 	// Подсчёт страниц для PDF
 	pagesCount := 0
 	if ext == "pdf" {
@@ -280,6 +403,14 @@ func (s *FileService) CreateFile(ctx context.Context, userID string, req *domain
 
 func (s *FileService) GetFile(ctx context.Context, id string) (*domain.File, error) {
 	return s.fileRepo.GetByID(ctx, id)
+}
+
+// UpdateFileMeta обновляет редактируемые метаданные файла (только для автора).
+func (s *FileService) UpdateFileMeta(ctx context.Context, fileID, userID string, req domain.UpdateFileMetaRequest) (*domain.File, error) {
+	if err := s.fileRepo.UpdateMeta(ctx, fileID, userID, req); err != nil {
+		return nil, err
+	}
+	return s.fileRepo.GetByID(ctx, fileID)
 }
 
 // Trending (LIB-6) — top-N files за указанный период.
@@ -359,6 +490,55 @@ func (s *FileService) IsFileLiked(ctx context.Context, fileID, userID string) (b
 	return s.fileRepo.IsFileLiked(ctx, fileID, userID)
 }
 
+// RateFile saves or updates the user's star rating (1–5) for a file.
+func (s *FileService) RateFile(ctx context.Context, fileID, userID string, rating int, reviewText string) error {
+	if rating < 1 || rating > 5 {
+		return fmt.Errorf("rating must be between 1 and 5")
+	}
+	if len(reviewText) > 2000 {
+		reviewText = reviewText[:2000]
+	}
+	return s.fileRepo.RateFile(ctx, fileID, userID, rating, reviewText)
+}
+
+// GetUserRating returns the viewer's current rating and review for a file (0/"" = not rated).
+func (s *FileService) GetUserRating(ctx context.Context, fileID, userID string) (int, string, error) {
+	return s.fileRepo.GetUserRating(ctx, fileID, userID)
+}
+
+// GetFileReviews returns recent reviews for a file.
+func (s *FileService) GetFileReviews(ctx context.Context, fileID string, limit int) ([]map[string]interface{}, error) {
+	return s.fileRepo.GetFileReviews(ctx, fileID, limit)
+}
+
+// EnrichWithUserRatings sets UserRating for each file in the slice (batch query).
+func (s *FileService) EnrichWithUserRatings(ctx context.Context, files []*domain.File, viewerID string) {
+	if viewerID == "" || len(files) == 0 {
+		return
+	}
+	ids := make([]string, len(files))
+	for i, f := range files {
+		ids[i] = f.ID
+	}
+	rated, err := s.fileRepo.GetUserRatingBatch(ctx, viewerID, ids)
+	if err != nil || rated == nil {
+		return
+	}
+	for _, f := range files {
+		f.UserRating = rated[f.ID]
+	}
+}
+
+// TrackView increments the view counter for a file and records it in file_views if userID known.
+func (s *FileService) TrackView(ctx context.Context, fileID, userID string) error {
+	return s.fileRepo.IncrementViews(ctx, fileID, userID)
+}
+
+// GetRecentlyViewed returns files recently viewed by the user.
+func (s *FileService) GetRecentlyViewed(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	return s.fileRepo.GetRecentlyViewed(ctx, userID, limit)
+}
+
 func (s *FileService) DownloadFile(ctx context.Context, fileID, userID string) (*domain.File, error) {
 	file, err := s.fileRepo.GetByID(ctx, fileID)
 	if err != nil {
@@ -381,13 +561,7 @@ func (s *FileService) ReExtractText(ctx context.Context, fileID string) (string,
 		return "", err
 	}
 
-	// Read file bytes from disk (R2 files have https:// URLs — not supported here).
-	if strings.HasPrefix(file.FileURL, "http") {
-		return "", fmt.Errorf("re-extract not supported for R2-hosted files")
-	}
-	// fileURL is a server-relative path like /uploads/library/2026/05/04/foo.docx
-	localPath := filepath.Join(".", file.FileURL)
-	data, err := os.ReadFile(localPath)
+	data, err := s.downloadFileBytes(ctx, file)
 	if err != nil {
 		return "", fmt.Errorf("read file: %w", err)
 	}
@@ -578,4 +752,49 @@ func (s *FileService) downloadFileBytes(ctx context.Context, file *domain.File) 
 	}
 	// Локальный путь (dev без R2)
 	return os.ReadFile(filepath.Join(".", file.FileURL))
+}
+
+// PopularAuthors возвращает авторов с наибольшим суммарным количеством лайков+скачиваний.
+func (s *FileService) PopularAuthors(ctx context.Context, limit int) ([]map[string]interface{}, error) {
+	return s.fileRepo.PopularAuthors(ctx, limit)
+}
+
+// FormatStats возвращает количество файлов по формату.
+func (s *FileService) FormatStats(ctx context.Context) ([]map[string]interface{}, error) {
+	return s.fileRepo.FormatStats(ctx)
+}
+
+// GetSocialPicks returns files popular among users the given user follows.
+func (s *FileService) GetSocialPicks(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	return s.fileRepo.GetSocialPicks(ctx, userID, limit)
+}
+
+// GetRelatedFiles returns files by the same author or category (excludes fileID).
+func (s *FileService) GetRelatedFiles(ctx context.Context, fileID string, limit int) ([]*domain.File, error) {
+	return s.fileRepo.GetRelatedFiles(ctx, fileID, limit)
+}
+
+// SearchSuggestions возвращает подсказки по названиям и авторам.
+func (s *FileService) SearchSuggestions(ctx context.Context, q string) ([]map[string]interface{}, error) {
+	return s.fileRepo.SearchSuggestions(ctx, q, 8)
+}
+
+// RecommendedFiles возвращает персонализированные рекомендации.
+func (s *FileService) RecommendedFiles(ctx context.Context, userID string, limit int) ([]*domain.File, error) {
+	return s.fileRepo.RecommendedFiles(ctx, userID, limit)
+}
+
+// GetReadingGoal returns the user's reading goal for the current year.
+func (s *FileService) GetReadingGoal(ctx context.Context, userID string, year int) (*domain.ReadingGoal, error) {
+	return s.readingRepo.GetReadingGoal(ctx, userID, year)
+}
+
+// UpsertReadingGoal creates or updates the user's reading goal.
+func (s *FileService) UpsertReadingGoal(ctx context.Context, userID string, year, goalBooks int) (*domain.ReadingGoal, error) {
+	return s.readingRepo.UpsertReadingGoal(ctx, userID, year, goalBooks)
+}
+
+// DeleteReadingGoal removes the user's reading goal for the year.
+func (s *FileService) DeleteReadingGoal(ctx context.Context, userID string, year int) error {
+	return s.readingRepo.DeleteReadingGoal(ctx, userID, year)
 }

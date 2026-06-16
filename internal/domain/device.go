@@ -24,24 +24,52 @@ type BleDeviceExportRow struct {
 	PrivateIDHex  string `json:"private_id_hex"`
 }
 
-// ScanProfile — анонимная личность юзера в BLE-сканере.
-// Сканирующий видит ТОЛЬКО эти поля, реальный аккаунт скрыт.
+// ScanProfile — REAL profile shown in BLE scanner.
+// Scanner shows actual account info to nearby users.
 type ScanProfile struct {
-	ScanAlias     string `json:"scan_alias"`
-	ScanAvatarURL string `json:"scan_avatar_url"`
+	UserID     string `json:"user_id"`
+	Username   string `json:"username"`
+	FullName   string `json:"full_name"`
+	AvatarURL  string `json:"avatar_url"`
+	Bio        string `json:"bio"`
+	IsVerified bool   `json:"is_verified"`
 	// DeviceHash — public_id_hex браслета. Используется для отправки лайка.
-	DeviceHash    string `json:"device_hash"`
+	DeviceHash string `json:"device_hash"`
 }
 
 // UpdateScanProfileRequest — тело PUT /users/me/scan-profile.
 type UpdateScanProfileRequest struct {
 	ScanAlias     string `json:"scan_alias"      validate:"omitempty,max=50"`
 	ScanAvatarURL string `json:"scan_avatar_url" validate:"omitempty,max=500"`
+	ScanEmoji     string `json:"scan_emoji"      validate:"omitempty,max=10"`
+	ScanStatus    string `json:"scan_status"     validate:"omitempty,max=100"`
 	ScanEnabled   *bool  `json:"scan_enabled"`
+}
+
+// ConnectToken — short-lived QR token for starting a chat via physical contact.
+type ConnectToken struct {
+	Token     string    `json:"token"`
+	QRValue   string    `json:"qr_value"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // GenerateDevicesRequest — тело POST /admin/devices/generate.
 type GenerateDevicesRequest struct {
 	Count int    `json:"count" validate:"required,min=1,max=500"`
 	Notes string `json:"notes" validate:"omitempty,max=200"`
+}
+
+// PrivateWhitelistEntry — один разрешённый пользователь в private-whitelist.
+type PrivateWhitelistEntry struct {
+	UserID    string `json:"user_id"`
+	Username  string `json:"username"`
+	FullName  string `json:"full_name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// SetPrivateWhitelistRequest — тело PUT /users/me/private-whitelist.
+// UserIDs — список user_id взаимных подписчиков которым разрешён private-режим.
+// Пустой список [] = никто не видит (максимальная приватность).
+type SetPrivateWhitelistRequest struct {
+	UserIDs []string `json:"user_ids" validate:"max=500"`
 }
