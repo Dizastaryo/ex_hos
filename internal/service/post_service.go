@@ -28,6 +28,7 @@ type PostService struct {
 	cache        *redisRepo.Cache
 	wsHub        *ws.Hub
 	mediaService *MediaService
+	interestSvc  *InterestService // optional: drives personalized Explore ranking
 	logger       *zap.Logger
 }
 
@@ -38,6 +39,7 @@ func NewPostService(
 	cache *redisRepo.Cache,
 	wsHub *ws.Hub,
 	mediaService *MediaService,
+	interestSvc *InterestService,
 	logger *zap.Logger,
 ) *PostService {
 	return &PostService{
@@ -47,6 +49,7 @@ func NewPostService(
 		cache:        cache,
 		wsHub:        wsHub,
 		mediaService: mediaService,
+		interestSvc:  interestSvc,
 		logger:       logger,
 	}
 }
@@ -74,6 +77,7 @@ func (s *PostService) Create(ctx context.Context, userID string, req *domain.Cre
 		Location:     req.Location,
 		ThumbnailURL: thumbnailURL,
 		AudioTrackID: req.AudioTrackID,
+		AudioStartSeconds: req.AudioStartSeconds,
 	}
 
 	if err := s.postRepo.Create(ctx, post); err != nil {
@@ -280,6 +284,9 @@ func (s *PostService) GetFeedByCursor(
 	if err != nil {
 		return nil, "", fmt.Errorf("get feed cursor: %w", err)
 	}
+	if posts == nil {
+		posts = []*domain.Post{}
+	}
 	hasNext := len(posts) > limit
 	if hasNext {
 		posts = posts[:limit]
@@ -317,12 +324,38 @@ func decodeFeedCursor(cursor string) (time.Time, string, bool) {
 	return t, s[idx+1:], true
 }
 
+// explorePoolSize bounds the candidate set re-ranked for personalized Explore.
+// Big enough to give ranking room, small enough to stay cheap (≤ a few pages).
+const explorePoolSize = 120
+
 func (s *PostService) GetExplore(ctx context.Context, userID string, page, limit int, mediaType ...string) ([]*domain.Post, pagination.Meta, error) {
-	offset := pagination.Offset(page, limit)
 	mt := ""
 	if len(mediaType) > 0 {
 		mt = mediaType[0]
 	}
+
+	// Decide personalization mode from the user's interest profile.
+	//   anonymous          → no user
+	//   cold_start         → user but no usable signal yet
+	//   personalized_light → user with recent interest events → re-rank
+	mode := "anonymous"
+	var profile domain.InterestProfile
+	if userID != "" {
+		mode = "cold_start"
+		if s.interestSvc != nil {
+			if p, err := s.interestSvc.Profile(ctx, userID); err == nil && !p.IsEmpty() {
+				profile = p
+				mode = "personalized_light"
+			}
+		}
+	}
+
+	if mode == "personalized_light" {
+		return s.getExplorePersonalized(ctx, userID, page, limit, mt, profile)
+	}
+
+	// Anonymous / cold-start: existing popularity+recency ordering (unchanged).
+	offset := pagination.Offset(page, limit)
 	posts, err := s.postRepo.GetExplore(ctx, userID, limit+1, offset, mt)
 	if err != nil {
 		return nil, pagination.Meta{}, fmt.Errorf("get explore: %w", err)
@@ -336,12 +369,46 @@ func (s *PostService) GetExplore(ctx context.Context, userID string, page, limit
 	s.enrichPosts(ctx, posts, userID)
 
 	meta := pagination.Meta{
-		Page:        page,
-		Limit:       limit,
-		HasNextPage: hasNext,
+		Page:                page,
+		Limit:               limit,
+		HasNextPage:         hasNext,
+		PersonalizationMode: mode,
+	}
+	return posts, meta, nil
+}
+
+// getExplorePersonalized fetches a bounded candidate pool (deterministically
+// ordered by popularity+recency in SQL), re-ranks it in memory with the
+// transparent interest score, then paginates. Re-fetching the same pool per
+// page keeps pagination stable.
+func (s *PostService) getExplorePersonalized(ctx context.Context, userID string, page, limit int, mt string, profile domain.InterestProfile) ([]*domain.Post, pagination.Meta, error) {
+	pool, err := s.postRepo.GetExplore(ctx, userID, explorePoolSize, 0, mt)
+	if err != nil {
+		return nil, pagination.Meta{}, fmt.Errorf("get explore pool: %w", err)
 	}
 
-	return posts, meta, nil
+	domain.RankPosts(pool, profile, time.Now())
+
+	offset := pagination.Offset(page, limit)
+	if offset > len(pool) {
+		offset = len(pool)
+	}
+	end := offset + limit
+	if end > len(pool) {
+		end = len(pool)
+	}
+	pageItems := pool[offset:end]
+	hasNext := end < len(pool)
+
+	s.enrichPosts(ctx, pageItems, userID)
+
+	meta := pagination.Meta{
+		Page:                page,
+		Limit:               limit,
+		HasNextPage:         hasNext,
+		PersonalizationMode: "personalized_light",
+	}
+	return pageItems, meta, nil
 }
 
 func (s *PostService) GetByUsername(ctx context.Context, username, viewerID string, page, limit int) ([]*domain.Post, pagination.Meta, error) {

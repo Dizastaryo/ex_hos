@@ -21,8 +21,8 @@ func NewPostRepository(db *DB) *PostRepository {
 func (r *PostRepository) Create(ctx context.Context, post *domain.Post) error {
 	query := `
 		INSERT INTO posts (user_id, caption, media_urls, media_types, location, thumbnail_url,
-		                   audio_track_id)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, '')::uuid)
+		                   audio_track_id, audio_start_seconds)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, '')::uuid, $8)
 		RETURNING id, likes_count, comments_count, saves_count, created_at, updated_at`
 
 	err := r.db.Pool.QueryRow(ctx, query,
@@ -33,6 +33,7 @@ func (r *PostRepository) Create(ctx context.Context, post *domain.Post) error {
 		post.Location,
 		post.ThumbnailURL,
 		post.AudioTrackID,
+		post.AudioStartSeconds,
 	).Scan(&post.ID, &post.LikesCount, &post.CommentsCount, &post.SavesCount, &post.CreatedAt, &post.UpdatedAt)
 
 	if err != nil {
@@ -47,6 +48,7 @@ func (r *PostRepository) GetByID(ctx context.Context, id string) (*domain.Post, 
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -56,7 +58,7 @@ func (r *PostRepository) GetByID(ctx context.Context, id string) (*domain.Post, 
 	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
 		&post.ID, &post.UserID, &post.Caption, &post.MediaURLs, &post.MediaTypes,
 		&post.Location, &post.ThumbnailURL, &post.LikesCount, &post.CommentsCount, &post.SavesCount,
-		&post.CreatedAt, &post.UpdatedAt, &post.AudioTrackID,
+		&post.CreatedAt, &post.UpdatedAt, &post.AudioTrackID, &post.AudioStartSeconds,
 		&post.User.ID, &post.User.Username, &post.User.FullName,
 		&post.User.AvatarURL, &post.User.IsVerified,
 	)
@@ -88,6 +90,7 @@ func (r *PostRepository) GetByUserID(ctx context.Context, userID string, limit, 
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -105,6 +108,7 @@ func (r *PostRepository) GetFeed(ctx context.Context, userID string, limit, offs
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -156,6 +160,7 @@ func (r *PostRepository) GetFeedSmart(
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -204,6 +209,7 @@ func (r *PostRepository) GetFeedByCursor(
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -249,6 +255,7 @@ func (r *PostRepository) GetExplore(ctx context.Context, userID string, limit, o
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -274,6 +281,7 @@ func (r *PostRepository) GetSavedByUserID(ctx context.Context, userID string, li
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -290,6 +298,7 @@ func (r *PostRepository) SearchByCaption(ctx context.Context, query string, limi
 		SELECT p.id, p.user_id, p.caption, p.media_urls, p.media_types, p.location,
 		       p.thumbnail_url, p.likes_count, p.comments_count, p.saves_count, p.created_at, p.updated_at,
 		       COALESCE(p.audio_track_id::text, ''),
+		       COALESCE(p.audio_start_seconds, 0),
 		       u.id, u.username, u.full_name, u.avatar_url, u.is_verified
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
@@ -421,7 +430,7 @@ func (r *PostRepository) scanPosts(ctx context.Context, query string, args ...in
 		if err := rows.Scan(
 			&p.ID, &p.UserID, &p.Caption, &p.MediaURLs, &p.MediaTypes,
 			&p.Location, &p.ThumbnailURL, &p.LikesCount, &p.CommentsCount, &p.SavesCount,
-			&p.CreatedAt, &p.UpdatedAt, &p.AudioTrackID,
+			&p.CreatedAt, &p.UpdatedAt, &p.AudioTrackID, &p.AudioStartSeconds,
 			&p.User.ID, &p.User.Username, &p.User.FullName,
 			&p.User.AvatarURL, &p.User.IsVerified,
 		); err != nil {

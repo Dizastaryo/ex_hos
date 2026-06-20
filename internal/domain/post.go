@@ -16,9 +16,12 @@ type Post struct {
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 
-	// Optional audio track overlay (used when post has video media —
-	// previously a "reels" feature, now part of the unified post model).
+	// Optional audio track overlay — photo OR video post.
+	// (Previously a "reels" feature, now part of the unified post model.)
 	AudioTrackID string `json:"audio_track_id,omitempty" db:"audio_track_id"`
+	// Where in the track playback starts. For a photo post the track loops
+	// from this offset; for a video it overlays the clip from here.
+	AudioStartSeconds int `json:"audio_start_seconds" db:"audio_start_seconds"`
 
 	// Joined fields
 	User      *UserShort `json:"user,omitempty"`
@@ -39,6 +42,7 @@ type CreatePostRequest struct {
 	Location     string   `json:"location" validate:"omitempty,max=255"`
 	ThumbnailURL string   `json:"thumbnail_url" validate:"omitempty"`
 	AudioTrackID string   `json:"audio_track_id" validate:"omitempty,uuid"`
+	AudioStartSeconds int `json:"audio_start_seconds" validate:"omitempty,min=0"`
 }
 
 type PostFeedItem struct {
