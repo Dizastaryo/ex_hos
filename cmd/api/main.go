@@ -124,6 +124,7 @@ func main() {
 	searchHistoryRepo := postgres.NewSearchHistoryRepository(db)
 	otpRepo := postgres.NewOTPRepository(db)
 	userStatsRepo := postgres.NewUserStatsRepository(db)
+	interestRepo := postgres.NewInterestRepository(db)
 
 	// WebSocket Hub — must be created before services that emit realtime events.
 	wsHub := ws.NewHub(logger)
@@ -174,7 +175,8 @@ func main() {
 	// MediaService must come before post/story services that take it as a dep
 	// to release dedup refs on delete.
 	mediaService := service.NewMediaService(db.Pool, logger, r2Client)
-	postService := service.NewPostService(postRepo, userRepo, followRepo, cache, wsHub, mediaService, logger)
+	interestService := service.NewInterestService(interestRepo, logger)
+	postService := service.NewPostService(postRepo, userRepo, followRepo, cache, wsHub, mediaService, interestService, logger)
 	storyService := service.NewStoryService(storyRepo, userRepo, followRepo, notifRepo, cache, wsHub, mediaService, logger)
 	commentService := service.NewCommentService(commentRepo, postRepo, notifRepo, cache, wsHub, logger)
 	likeService := service.NewLikeService(likeRepo, postRepo, commentRepo, storyRepo, notifRepo, userStatsRepo, cache, wsHub, logger)
@@ -259,9 +261,18 @@ func main() {
 	mediaHandler := handler.NewMediaHandler(mediaService, r2Client, logger)
 	searchHandler := handler.NewSearchHandler(searchService, searchHistoryRepo, logger)
 	audioRepo := postgres.NewAudioRepository(db)
-	audioHandler := handler.NewAudioHandler(audioRepo, userStatsRepo, logger)
+	audioJobRepo := postgres.NewMediaJobRepository(db)
+	audioService := service.NewAudioService(audioRepo, audioJobRepo, r2Client, logger)
+	// videoRepo is used by the main API for the "videos using this sound"
+	// endpoint and the backend-owned mixed Explore feed (post+short+video).
+	videoRepoForAudio := postgres.NewVideoRepository(db)
+	audioHandler := handler.NewAudioHandler(audioRepo, videoRepoForAudio, likeRepo, audioService, logger)
+	exploreService := service.NewExploreService(postRepo, videoRepoForAudio, interestService, logger)
+	exploreHandler := handler.NewExploreHandler(exploreService, logger)
+	interestHandler := handler.NewInterestHandler(interestService, logger)
 	chatHandler := handler.NewChatHandler(chatService, logger)
-	wsHandler := handler.NewWSHandler(wsHub, chatRepo, userRepo, callRepo, notifRepo, followRepo, audioRepo, logger)
+	liveStreamRepo := postgres.NewLiveStreamRepository(db)
+	wsHandler := handler.NewWSHandler(wsHub, chatRepo, userRepo, callRepo, notifRepo, followRepo, audioRepo, liveStreamRepo, logger)
 	callHandler := handler.NewCallHandler(callRepo, logger)
 	aiMasksRepo := postgres.NewAIMasksRepository(db)
 	aiStylRepo := postgres.NewAIStylizationsRepository(db)
@@ -285,6 +296,7 @@ func main() {
 	scannerService := service.NewScannerService(scannerRepo, userRepo, notifRepo, userStatsRepo, wsHub, logger)
 	scannerService.SetChatRepo(chatRepo)
 	scannerHandler := handler.NewScannerHandler(scannerService, logger)
+	liveStreamHandler := handler.NewLiveStreamHandler(liveStreamRepo, followRepo, wsHub, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -433,7 +445,12 @@ func main() {
 	api.Get("/posts/:id", middleware.OptionalAuth(jwtManager), postHandler.GetPost)
 	api.Delete("/posts/:id", middleware.Auth(jwtManager, sessionStore, userRepo), postHandler.DeletePost)
 	api.Get("/feed", middleware.Auth(jwtManager, sessionStore, userRepo), postHandler.GetFeed)
-	api.Get("/explore", middleware.OptionalAuth(jwtManager), postHandler.GetExplore)
+	// Backend-owned mixed Explore feed (posts + shorts + videos, ranked).
+	api.Get("/explore", middleware.OptionalAuth(jwtManager), exploreHandler.GetExplore)
+	// Explore shorts queue: shorts only, same ranked order.
+	api.Get("/explore/shorts", middleware.OptionalAuth(jwtManager), exploreHandler.GetExploreShorts)
+	// Interest-event capture (best-effort; feeds Explore personalization).
+	api.Post("/interest/events", middleware.OptionalAuth(jwtManager), interestHandler.RecordEvent)
 
 	// Like routes
 	api.Post("/posts/:id/react", middleware.Auth(jwtManager, sessionStore, userRepo), postHandler.React)
@@ -503,16 +520,31 @@ func main() {
 	// Audio tracks
 	api.Get("/audio-tracks", middleware.OptionalAuth(jwtManager), audioHandler.GetTracks)
 	api.Post("/audio-tracks", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.CreateTrack)
+	api.Post("/audio-tracks/upload", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.UploadTrack)
 	api.Get("/audio-tracks/me", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.ListMine)
-	// MUSIC-3/4: smart-playlists + daily-mix. ORDER важен — specific paths
-	// до :id чтобы Fiber не матчил «recent» как id.
+	// Static paths must precede :id to avoid Fiber matching them as an id.
 	api.Get("/audio-tracks/recent", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.ListRecent)
 	api.Get("/audio-tracks/liked", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.ListLiked)
+	api.Get("/audio-tracks/saved", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.ListSaved)
+	api.Get("/audio-tracks/original-sounds", middleware.OptionalAuth(jwtManager), audioHandler.GetOriginalSounds)
+	api.Get("/audio-tracks/trending", middleware.OptionalAuth(jwtManager), audioHandler.GetTrending)
 	api.Get("/audio-tracks/daily-mix", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.DailyMix)
+	// Phase 5: discovery / browse / search
+	api.Get("/audio-tracks/discovery", middleware.OptionalAuth(jwtManager), audioHandler.Discovery)
+	api.Get("/audio-tracks/search", middleware.OptionalAuth(jwtManager), audioHandler.SearchAudio)
+	api.Get("/audio-tracks/browse/categories", middleware.OptionalAuth(jwtManager), audioHandler.BrowseCategories)
+	api.Get("/audio-tracks/browse/categories/:category", middleware.OptionalAuth(jwtManager), audioHandler.BrowseCategoryDetail)
 	api.Get("/audio-tracks/:id", middleware.OptionalAuth(jwtManager), audioHandler.GetTrackByID)
-	api.Post("/audio-tracks/:id/play", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.RecordPlay)
+	// Phase 2: "videos using this sound"
+	api.Get("/audio-tracks/:id/videos", middleware.OptionalAuth(jwtManager), audioHandler.GetVideosByAudioTrack)
+	// Phase 3: engagement
 	api.Post("/audio-tracks/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.LikeTrack)
 	api.Delete("/audio-tracks/:id/like", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.UnlikeTrack)
+	api.Post("/audio-tracks/:id/save", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.SaveTrack)
+	api.Delete("/audio-tracks/:id/save", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.UnsaveTrack)
+	api.Post("/audio-tracks/:id/play", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.RecordPlay)
+	api.Patch("/audio-tracks/:id", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.UpdateTrack)
+	api.Delete("/audio-tracks/:id", middleware.Auth(jwtManager, sessionStore, userRepo), audioHandler.DeleteTrack)
 
 	// Playlists (Music v2)
 	playlists := api.Group("/playlists", middleware.Auth(jwtManager, sessionStore, userRepo))
@@ -686,6 +718,15 @@ func main() {
 	admin.Get("/devices/export.csv", adminHandler.ExportDevicesCSV)
 	admin.Get("/devices", adminHandler.ListDevices)
 	admin.Delete("/devices/:id", adminHandler.DeactivateDevice)
+
+	// Live streams
+	streams := api.Group("/streams")
+	streams.Get("/", middleware.OptionalAuth(jwtManager), liveStreamHandler.GetActiveStreams)
+	streams.Post("/", middleware.Auth(jwtManager, sessionStore, userRepo), liveStreamHandler.StartStream)
+	streams.Get("/:id", middleware.OptionalAuth(jwtManager), liveStreamHandler.GetStream)
+	streams.Delete("/:id", middleware.Auth(jwtManager, sessionStore, userRepo), liveStreamHandler.EndStream)
+	streams.Post("/:id/join", middleware.Auth(jwtManager, sessionStore, userRepo), liveStreamHandler.JoinStream)
+	streams.Delete("/:id/join", middleware.Auth(jwtManager, sessionStore, userRepo), liveStreamHandler.LeaveStream)
 
 	// WebSocket — requires upgrade check middleware before the actual handler
 	api.Get("/ws",

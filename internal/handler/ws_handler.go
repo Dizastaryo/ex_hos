@@ -14,14 +14,15 @@ import (
 )
 
 type WSHandler struct {
-	hub        *ws.Hub
-	chatRepo   *postgres.ChatRepository
-	userRepo   *postgres.UserRepository
-	callRepo   *postgres.CallRepository
-	notifRepo  *postgres.NotificationRepository
-	followRepo *postgres.FollowRepository
-	audioRepo  *postgres.AudioRepository
-	logger     *zap.Logger
+	hub            *ws.Hub
+	chatRepo       *postgres.ChatRepository
+	userRepo       *postgres.UserRepository
+	callRepo       *postgres.CallRepository
+	notifRepo      *postgres.NotificationRepository
+	followRepo     *postgres.FollowRepository
+	audioRepo      *postgres.AudioRepository
+	liveStreamRepo *postgres.LiveStreamRepository
+	logger         *zap.Logger
 }
 
 func NewWSHandler(
@@ -32,6 +33,7 @@ func NewWSHandler(
 	notifRepo *postgres.NotificationRepository,
 	followRepo *postgres.FollowRepository,
 	audioRepo *postgres.AudioRepository,
+	liveStreamRepo *postgres.LiveStreamRepository,
 	logger *zap.Logger,
 ) *WSHandler {
 	// BUG-11: ранее `if h.callRepo == nil return` silently no-op'нул на
@@ -54,14 +56,15 @@ func NewWSHandler(
 		logger.Warn("WSHandler: userRepo is nil — call.invite payload enrichment disabled")
 	}
 	return &WSHandler{
-		hub:        hub,
-		chatRepo:   chatRepo,
-		userRepo:   userRepo,
-		callRepo:   callRepo,
-		notifRepo:  notifRepo,
-		followRepo: followRepo,
-		audioRepo:  audioRepo,
-		logger:     logger,
+		hub:            hub,
+		chatRepo:       chatRepo,
+		userRepo:       userRepo,
+		callRepo:       callRepo,
+		notifRepo:      notifRepo,
+		followRepo:     followRepo,
+		audioRepo:      audioRepo,
+		liveStreamRepo: liveStreamRepo,
+		logger:         logger,
 	}
 }
 
@@ -156,6 +159,17 @@ func (h *WSHandler) handleClientMessage(client *ws.Client, data []byte) {
 	// title/artist (фронт хочет рендерить без отдельного fetch'а).
 	case "music.now_playing", "music.stopped":
 		h.fanOutNowPlaying(client.UserID, msg.Type, msg.Payload)
+	// Live stream WebRTC signaling. The broadcaster creates the offer after a
+	// viewer joins; ICE candidates are exchanged bidirectionally. Backend only
+	// relays — it never inspects SDP.
+	case "live_stream.join":
+		h.handleLiveStreamJoin(client.UserID, msg.Payload)
+	case "live_stream.leave":
+		h.handleLiveStreamLeave(client.UserID, msg.Payload)
+	case "live_stream.offer", "live_stream.answer", "live_stream.ice":
+		h.relayLiveStreamSignal(client.UserID, msg.Type, msg.Payload)
+	case "live_stream.end":
+		h.handleLiveStreamEnd(client.UserID, msg.Payload)
 	}
 }
 
@@ -377,6 +391,111 @@ func (h *WSHandler) fanOutTyping(senderID, chatID string) {
 	}
 	for _, peerID := range others {
 		h.hub.SendToUser(peerID, "chat.typing", payload)
+	}
+}
+
+// handleLiveStreamJoin — viewer sends this after POST /streams/:id/join.
+// We look up who the broadcaster is, then notify them a viewer arrived so
+// they can create a WebRTC offer for that viewer.
+func (h *WSHandler) handleLiveStreamJoin(viewerID string, payload map[string]any) {
+	if h.liveStreamRepo == nil {
+		return
+	}
+	streamID, _ := payload["stream_id"].(string)
+	if streamID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stream, err := h.liveStreamRepo.GetByID(ctx, streamID)
+	if err != nil || stream.Status != "live" {
+		return
+	}
+
+	out := map[string]any{
+		"stream_id":  streamID,
+		"viewer_id":  viewerID,
+	}
+	// Enrich with viewer username/avatar so broadcaster can show who joined.
+	if h.userRepo != nil {
+		uctx, ucancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer ucancel()
+		if u, uerr := h.userRepo.GetByID(uctx, viewerID); uerr == nil && u != nil {
+			out["viewer_username"] = u.Username
+			out["viewer_full_name"] = u.FullName
+			out["viewer_avatar"] = u.AvatarURL
+		}
+	}
+	h.hub.SendToUser(stream.UserID, "live_stream.viewer.joined", out)
+}
+
+// handleLiveStreamLeave — viewer tells us they left. Notify broadcaster.
+func (h *WSHandler) handleLiveStreamLeave(viewerID string, payload map[string]any) {
+	if h.liveStreamRepo == nil {
+		return
+	}
+	streamID, _ := payload["stream_id"].(string)
+	if streamID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stream, err := h.liveStreamRepo.GetByID(ctx, streamID)
+	if err != nil {
+		return
+	}
+	h.hub.SendToUser(stream.UserID, "live_stream.viewer.left", map[string]any{
+		"stream_id": streamID,
+		"viewer_id": viewerID,
+	})
+
+	// DB remove (best-effort; HTTP DELETE /join does the authoritative remove).
+	h.liveStreamRepo.RemoveViewer(ctx, streamID, viewerID)
+}
+
+// relayLiveStreamSignal relays offer/answer/ICE candidates between broadcaster
+// and a specific viewer. Uses to_user_id in payload, same pattern as call signaling.
+func (h *WSHandler) relayLiveStreamSignal(senderID, eventType string, payload map[string]any) {
+	toID, _ := payload["to_user_id"].(string)
+	if toID == "" || toID == senderID {
+		return
+	}
+	payload["from_user_id"] = senderID
+	delivered := h.hub.SendToUser(toID, eventType, payload)
+	if !delivered {
+		h.logger.Debug("live_stream signal undelivered",
+			zap.String("event", eventType),
+			zap.String("from", senderID),
+			zap.String("to", toID))
+	}
+}
+
+// handleLiveStreamEnd — broadcaster ends the stream via WS (complement to
+// DELETE /streams/:id HTTP endpoint). Fan-outs live_stream.ended to all viewers.
+func (h *WSHandler) handleLiveStreamEnd(broadcasterID string, payload map[string]any) {
+	if h.liveStreamRepo == nil {
+		return
+	}
+	streamID, _ := payload["stream_id"].(string)
+	if streamID == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	viewerIDs, err := h.liveStreamRepo.GetViewerIDs(ctx, streamID)
+	if err != nil {
+		h.logger.Warn("live_stream.end: get viewers", zap.Error(err))
+	}
+
+	// End in DB (only owner can end — passes userID for validation).
+	h.liveStreamRepo.End(ctx, streamID, broadcasterID)
+
+	out := map[string]any{"stream_id": streamID}
+	for _, vid := range viewerIDs {
+		h.hub.SendToUser(vid, "live_stream.ended", out)
 	}
 }
 
