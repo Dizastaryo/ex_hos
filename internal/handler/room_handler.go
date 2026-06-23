@@ -13,13 +13,14 @@ import (
 )
 
 type RoomHandler struct {
-	svc      *service.RoomService
-	validate *validator.Validate
-	logger   *zap.Logger
+	svc           *service.RoomService
+	accessService *service.AccessService
+	validate      *validator.Validate
+	logger        *zap.Logger
 }
 
-func NewRoomHandler(svc *service.RoomService, validate *validator.Validate, logger *zap.Logger) *RoomHandler {
-	return &RoomHandler{svc: svc, validate: validate, logger: logger}
+func NewRoomHandler(svc *service.RoomService, accessService *service.AccessService, validate *validator.Validate, logger *zap.Logger) *RoomHandler {
+	return &RoomHandler{svc: svc, accessService: accessService, validate: validate, logger: logger}
 }
 
 // GET /api/v1/rooms
@@ -119,6 +120,19 @@ func (h *RoomHandler) InviteMember(c *fiber.Ctx) error {
 	if err := h.validate.Struct(&req); err != nil {
 		return respondValidationError(c, err)
 	}
+
+	// Access check: can only invite users with mutual access.
+	if h.accessService != nil {
+		hasAccess, err := h.accessService.CheckAccess(c.Context(), userID, req.UserID)
+		if err != nil {
+			h.logger.Error("check access for room invite", zap.Error(err))
+			return respondError(c, fiber.StatusInternalServerError, "failed to check access")
+		}
+		if !hasAccess {
+			return respondError(c, fiber.StatusForbidden, "Нет доступа. Обменяйтесь QR-кодами для приглашения")
+		}
+	}
+
 	if err := h.svc.InviteMember(c.Context(), id, userID, req.UserID); err != nil {
 		switch err {
 		case domain.ErrForbidden:

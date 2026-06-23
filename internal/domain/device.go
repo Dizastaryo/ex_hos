@@ -39,11 +39,7 @@ type ScanProfile struct {
 
 // UpdateScanProfileRequest — тело PUT /users/me/scan-profile.
 type UpdateScanProfileRequest struct {
-	ScanAlias     string `json:"scan_alias"      validate:"omitempty,max=50"`
-	ScanAvatarURL string `json:"scan_avatar_url" validate:"omitempty,max=500"`
-	ScanEmoji     string `json:"scan_emoji"      validate:"omitempty,max=10"`
-	ScanStatus    string `json:"scan_status"     validate:"omitempty,max=100"`
-	ScanEnabled   *bool  `json:"scan_enabled"`
+	ScanEnabled *bool `json:"scan_enabled"`
 }
 
 // ConnectToken — short-lived QR token for starting a chat via physical contact.

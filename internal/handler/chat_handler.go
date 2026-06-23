@@ -14,14 +14,16 @@ import (
 )
 
 type ChatHandler struct {
-	chatService *service.ChatService
-	logger      *zap.Logger
+	chatService   *service.ChatService
+	accessService *service.AccessService
+	logger        *zap.Logger
 }
 
-func NewChatHandler(chatService *service.ChatService, logger *zap.Logger) *ChatHandler {
+func NewChatHandler(chatService *service.ChatService, accessService *service.AccessService, logger *zap.Logger) *ChatHandler {
 	return &ChatHandler{
-		chatService: chatService,
-		logger:      logger,
+		chatService:   chatService,
+		accessService: accessService,
+		logger:        logger,
 	}
 }
 
@@ -92,6 +94,18 @@ func (h *ChatHandler) CreateChat(c *fiber.Ctx) error {
 	}
 	if req.OtherUserID == userID {
 		return respondError(c, fiber.StatusBadRequest, "cannot create chat with yourself")
+	}
+
+	// Access check: only users with mutual access can open a DM.
+	if h.accessService != nil {
+		hasAccess, err := h.accessService.CheckAccess(c.Context(), userID, req.OtherUserID)
+		if err != nil {
+			h.logger.Error("check access for chat", zap.Error(err))
+			return respondError(c, fiber.StatusInternalServerError, "failed to check access")
+		}
+		if !hasAccess {
+			return respondError(c, fiber.StatusForbidden, "Нет доступа. Обменяйтесь QR-кодами для начала общения")
+		}
 	}
 
 	convID, err := h.chatService.GetOrCreateConversation(c.Context(), userID, req.OtherUserID)
