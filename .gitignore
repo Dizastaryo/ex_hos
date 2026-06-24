@@ -20,9 +20,8 @@ dist/
 go.work
 go.work.sum
 
-# Env files
-.env.*
-!.env.example
+# Env files (содержат секреты — никогда не пушить)
+.env
 
 # Logs
 logs/*.log
@@ -50,3 +49,6 @@ null
 
 # request logs
 logs/*.jsonl
+
+# LiveKit server binary (downloaded locally, не коммитить)
+livekit/bin/
