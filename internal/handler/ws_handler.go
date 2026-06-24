@@ -85,6 +85,35 @@ func (h *WSHandler) Handle(c *fiberws.Conn) {
 
 	h.hub.Register(client)
 	defer h.hub.Unregister(client)
+	// Clean up any live stream the user was broadcasting when they disconnect,
+	// and notify its viewers so they don't hang on a dead stream.
+	defer func() {
+		if h.liveStreamRepo == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		// Collect viewers per active stream BEFORE ending (END cascades nothing,
+		// but viewers rows persist — we read them first to fan-out `ended`).
+		streamIDs, _ := h.liveStreamRepo.GetActiveIDsByUser(ctx, userID)
+		viewersByStream := make(map[string][]string, len(streamIDs))
+		for _, sid := range streamIDs {
+			vids, _ := h.liveStreamRepo.GetViewerIDs(ctx, sid)
+			viewersByStream[sid] = vids
+		}
+
+		if err := h.liveStreamRepo.EndAllByUser(ctx, userID); err != nil {
+			h.logger.Warn("live_stream disconnect cleanup: end failed", zap.Error(err))
+			return
+		}
+		for sid, vids := range viewersByStream {
+			out := map[string]any{"stream_id": sid}
+			for _, vid := range vids {
+				h.hub.SendToUser(vid, "live_stream.ended", out)
+			}
+		}
+	}()
 
 	go h.writePump(client, c)
 	h.readPump(client, c)
@@ -414,8 +443,9 @@ func (h *WSHandler) handleLiveStreamJoin(viewerID string, payload map[string]any
 	}
 
 	out := map[string]any{
-		"stream_id":  streamID,
-		"viewer_id":  viewerID,
+		"stream_id":    streamID,
+		"viewer_id":    viewerID,
+		"viewer_count": stream.ViewerCount,
 	}
 	// Enrich with viewer username/avatar so broadcaster can show who joined.
 	if h.userRepo != nil {
@@ -446,13 +476,14 @@ func (h *WSHandler) handleLiveStreamLeave(viewerID string, payload map[string]an
 	if err != nil {
 		return
 	}
-	h.hub.SendToUser(stream.UserID, "live_stream.viewer.left", map[string]any{
-		"stream_id": streamID,
-		"viewer_id": viewerID,
-	})
 
-	// DB remove (best-effort; HTTP DELETE /join does the authoritative remove).
-	h.liveStreamRepo.RemoveViewer(ctx, streamID, viewerID)
+	// DB remove first so the count in the notification is up-to-date.
+	newCount, _ := h.liveStreamRepo.RemoveViewer(ctx, streamID, viewerID)
+	h.hub.SendToUser(stream.UserID, "live_stream.viewer.left", map[string]any{
+		"stream_id":    streamID,
+		"viewer_id":    viewerID,
+		"viewer_count": newCount,
+	})
 }
 
 // relayLiveStreamSignal relays offer/answer/ICE candidates between broadcaster
@@ -462,6 +493,27 @@ func (h *WSHandler) relayLiveStreamSignal(senderID, eventType string, payload ma
 	if toID == "" || toID == senderID {
 		return
 	}
+
+	// Anti-spoof: sender must actually be the broadcaster or a viewer of this
+	// stream before we relay SDP/ICE. Без проверки любой залогиненный юзер мог
+	// слать offer/ice произвольному пользователю.
+	if h.liveStreamRepo != nil {
+		streamID, _ := payload["stream_id"].(string)
+		if streamID == "" {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ok, err := h.liveStreamRepo.IsStreamParticipant(ctx, streamID, senderID)
+		cancel()
+		if err != nil || !ok {
+			h.logger.Debug("live_stream signal rejected (not a participant)",
+				zap.String("event", eventType),
+				zap.String("from", senderID),
+				zap.String("stream", streamID))
+			return
+		}
+	}
+
 	payload["from_user_id"] = senderID
 	delivered := h.hub.SendToUser(toID, eventType, payload)
 	if !delivered {

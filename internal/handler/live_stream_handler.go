@@ -89,12 +89,22 @@ func (h *LiveStreamHandler) EndStream(c *fiber.Ctx) error {
 	}
 
 	streamID := c.Params("id")
+
+	// Snapshot viewers before ending so we can fan-out `ended` even when the
+	// broadcaster closes the stream over HTTP (not just the WS `live_stream.end`).
+	viewerIDs, _ := h.streamRepo.GetViewerIDs(c.Context(), streamID)
+
 	if err := h.streamRepo.End(c.Context(), streamID, userID); err != nil {
 		if errors.Is(err, domain.ErrStreamNotFound) {
 			return respondError(c, fiber.StatusNotFound, "stream not found")
 		}
 		h.logger.Error("end stream", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to end stream")
+	}
+
+	out := map[string]any{"stream_id": streamID}
+	for _, vid := range viewerIDs {
+		h.hub.SendToUser(vid, "live_stream.ended", out)
 	}
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{"ok": true}, nil)
 }

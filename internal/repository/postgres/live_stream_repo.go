@@ -32,13 +32,23 @@ func (r *LiveStreamRepository) Create(ctx context.Context, userID, title string)
 		return nil, err
 	}
 
+	// Insert then re-read with the user JOIN so the returned stream carries
+	// username/full_name/avatar_url. Без этого fan-out `live_stream.started`
+	// уходил подписчикам с пустым именем/аватаром (баннер «@ начал(а) эфир»).
 	var s domain.LiveStream
 	err = r.db.Pool.QueryRow(ctx,
-		`INSERT INTO live_streams (user_id, title)
-		 VALUES ($1, $2)
-		 RETURNING id, user_id::text, title, status, viewer_count, started_at`,
+		`WITH ins AS (
+		     INSERT INTO live_streams (user_id, title)
+		     VALUES ($1, $2)
+		     RETURNING id, user_id, title, status, viewer_count, started_at
+		 )
+		 SELECT ins.id, ins.user_id::text, u.username,
+		        COALESCE(u.full_name, ''), COALESCE(u.avatar_url, ''),
+		        ins.title, ins.status, ins.viewer_count, ins.started_at
+		 FROM ins JOIN users u ON u.id = ins.user_id`,
 		userID, title,
-	).Scan(&s.ID, &s.UserID, &s.Title, &s.Status, &s.ViewerCount, &s.StartedAt)
+	).Scan(&s.ID, &s.UserID, &s.Username, &s.FullName, &s.AvatarURL,
+		&s.Title, &s.Status, &s.ViewerCount, &s.StartedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +212,43 @@ func (r *LiveStreamRepository) GetViewerPreview(ctx context.Context, streamID st
 		viewers = append(viewers, v)
 	}
 	return viewers, rows.Err()
+}
+
+// GetActiveIDsByUser returns ids of all currently-live streams owned by user.
+// Used on WS disconnect to notify viewers their stream is gone.
+func (r *LiveStreamRepository) GetActiveIDsByUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT id FROM live_streams WHERE user_id = $1 AND status = 'live'`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// IsStreamParticipant reports whether userID is the broadcaster of the stream
+// or one of its current viewers. Anti-spoof guard for WebRTC signal relay.
+func (r *LiveStreamRepository) IsStreamParticipant(ctx context.Context, streamID, userID string) (bool, error) {
+	var ok bool
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS (
+		     SELECT 1 FROM live_streams      WHERE id = $1 AND user_id = $2
+		     UNION ALL
+		     SELECT 1 FROM live_stream_viewers WHERE stream_id = $1 AND user_id = $2
+		 )`,
+		streamID, userID,
+	).Scan(&ok)
+	return ok, err
 }
 
 // EndAllByUser ends all active streams for a user (cleanup on reconnect).
