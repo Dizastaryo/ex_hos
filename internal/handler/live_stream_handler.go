@@ -9,12 +9,14 @@ import (
 	"github.com/seeu/backend/internal/domain"
 	"github.com/seeu/backend/internal/middleware"
 	"github.com/seeu/backend/internal/repository/postgres"
+	"github.com/seeu/backend/internal/service"
 	"github.com/seeu/backend/internal/ws"
 )
 
 type LiveStreamHandler struct {
 	streamRepo *postgres.LiveStreamRepository
 	followRepo *postgres.FollowRepository
+	liveKit    *service.LiveKitService
 	hub        *ws.Hub
 	logger     *zap.Logger
 }
@@ -22,12 +24,14 @@ type LiveStreamHandler struct {
 func NewLiveStreamHandler(
 	streamRepo *postgres.LiveStreamRepository,
 	followRepo *postgres.FollowRepository,
+	liveKit *service.LiveKitService,
 	hub *ws.Hub,
 	logger *zap.Logger,
 ) *LiveStreamHandler {
 	return &LiveStreamHandler{
 		streamRepo: streamRepo,
 		followRepo: followRepo,
+		liveKit:    liveKit,
 		hub:        hub,
 		logger:     logger,
 	}
@@ -49,12 +53,29 @@ func (h *LiveStreamHandler) StartStream(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusBadRequest, "invalid body")
 	}
 
+	if h.liveKit == nil || !h.liveKit.Configured() {
+		return respondError(c, fiber.StatusServiceUnavailable, "live streaming is not available")
+	}
+
 	stream, err := h.streamRepo.Create(c.Context(), userID, req.Title)
 	if err != nil {
 		if errors.Is(err, domain.ErrAlreadyStreaming) {
 			return respondError(c, fiber.StatusConflict, "already streaming")
 		}
 		h.logger.Error("create stream", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to start stream")
+	}
+
+	// Mint a publisher token for the broadcaster (room = stream id).
+	name := stream.FullName
+	if name == "" {
+		name = stream.Username
+	}
+	token, err := h.liveKit.Token(stream.ID, userID, name, true)
+	if err != nil {
+		// Roll back the DB row so the user isn't stuck "already streaming".
+		_ = h.streamRepo.End(c.Context(), stream.ID, userID)
+		h.logger.Error("mint broadcaster token", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to start stream")
 	}
 
@@ -77,7 +98,11 @@ func (h *LiveStreamHandler) StartStream(c *fiber.Ctx) error {
 		h.hub.SendToUsers(followerIDs, "live_stream.started", payload)
 	}()
 
-	return respondSuccess(c, fiber.StatusCreated, stream, nil)
+	return respondSuccess(c, fiber.StatusCreated, fiber.Map{
+		"stream":      stream,
+		"livekit_url": h.liveKit.URL(),
+		"token":       token,
+	}, nil)
 }
 
 // DELETE /api/v1/streams/:id
@@ -167,15 +192,28 @@ func (h *LiveStreamHandler) JoinStream(c *fiber.Ctx) error {
 		return respondError(c, fiber.StatusGone, "stream ended")
 	}
 
+	if h.liveKit == nil || !h.liveKit.Configured() {
+		return respondError(c, fiber.StatusServiceUnavailable, "live streaming is not available")
+	}
+
 	viewerCount, err := h.streamRepo.AddViewer(c.Context(), streamID, userID)
 	if err != nil {
 		h.logger.Error("add viewer", zap.Error(err))
 		return respondError(c, fiber.StatusInternalServerError, "failed to join")
 	}
 
+	// Subscribe-only token for the viewer (room = stream id).
+	token, err := h.liveKit.Token(streamID, userID, userID, false)
+	if err != nil {
+		h.logger.Error("mint viewer token", zap.Error(err))
+		return respondError(c, fiber.StatusInternalServerError, "failed to join")
+	}
+
 	return respondSuccess(c, fiber.StatusOK, fiber.Map{
 		"stream":       stream,
 		"viewer_count": viewerCount,
+		"livekit_url":  h.liveKit.URL(),
+		"token":        token,
 	}, nil)
 }
 

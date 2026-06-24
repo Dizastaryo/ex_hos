@@ -299,7 +299,16 @@ func main() {
 	scannerService := service.NewScannerService(scannerRepo, userRepo, notifRepo, wsHub, logger)
 	scannerService.SetChatRepo(chatRepo)
 	scannerHandler := handler.NewScannerHandler(scannerService, logger)
-	liveStreamHandler := handler.NewLiveStreamHandler(liveStreamRepo, followRepo, wsHub, logger)
+	coinRepo := postgres.NewCoinRepository(db)
+	coinService := service.NewCoinService(coinRepo, userRepo, notifRepo, wsHub, logger)
+	coinHandler := handler.NewCoinHandler(coinService, logger)
+	liveKitService := service.NewLiveKitService(cfg.LiveKit.URL, cfg.LiveKit.APIKey, cfg.LiveKit.APISecret)
+	if liveKitService.Configured() {
+		logger.Info("livekit configured", zap.String("url", cfg.LiveKit.URL))
+	} else {
+		logger.Warn("livekit NOT configured — live streaming disabled (set LIVEKIT_URL/API_KEY/API_SECRET)")
+	}
+	liveStreamHandler := handler.NewLiveStreamHandler(liveStreamRepo, followRepo, liveKitService, wsHub, logger)
 
 	// Fiber app
 	app := fiber.New(fiber.Config{
@@ -679,6 +688,11 @@ func main() {
 	access.Get("/check/:userId", accessHandler.CheckAccess)
 	access.Delete("/:userId", accessHandler.RevokeAccess)
 	access.Get("/list", accessHandler.ListAccessPartners)
+
+	// Coin recognition system
+	coins := api.Group("/coins", middleware.Auth(jwtManager, sessionStore, userRepo))
+	coins.Post("/grant", coinHandler.Grant)
+	coins.Get("/my-limits", coinHandler.MyLimits)
 
 	// Legacy connect QR (kept for backward compat; superceded by /access)
 	connect := api.Group("/connect", middleware.Auth(jwtManager, sessionStore, userRepo))

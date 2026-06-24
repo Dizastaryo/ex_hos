@@ -1,0 +1,22 @@
+# LiveKit для ПРОДАКШЕНА (docker). Локально докер НЕ используем — там бинарник.
+#
+# Запуск:
+#   LIVEKIT_KEYS="prodkey: <32+ char secret>" NODE_IP=<public-ip> \
+#     docker compose -f docker-compose.prod.yml up -d
+#
+# Порты: 7880 (signaling ws), 7881 (rtc tcp), 50000-60000/udp (media).
+# Открыть эти UDP-порты в файрволе/security-group. Для wss:// поставить
+# nginx/caddy с TLS перед сервисом (proxy на 7880).
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml --node-ip ${NODE_IP}
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS}
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-60000:50000-60000/udp"
+    volumes:
+      - ./livekit/livekit.prod.yaml:/etc/livekit.yaml:ro

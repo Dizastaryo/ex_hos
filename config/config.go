@@ -11,14 +11,31 @@ import (
 )
 
 type Config struct {
-	App       AppConfig
-	Database  DatabaseConfig
-	JWT       JWTConfig
-	OpenAI    OpenAIConfig
-	WhatsApp  WhatsAppConfig
-	OTP       OTPConfig
-	R2        R2Config
-	Device    DeviceConfig
+	App         AppConfig
+	Database    DatabaseConfig
+	JWT         JWTConfig
+	OpenAI      OpenAIConfig
+	WhatsApp    WhatsAppConfig
+	OTP         OTPConfig
+	R2          R2Config
+	Device      DeviceConfig
+	MediaWorker MediaWorkerConfig
+	LiveKit     LiveKitConfig
+}
+
+// LiveKitConfig — self-hosted LiveKit (SFU) для прямых эфиров.
+// Локально сервер запускается бинарником (см. livekit/README.md), в проде —
+// docker. Пустой APIKey/APISecret → выдача токенов эфиров отключена (эфиры
+// не запускаются, остальное приложение работает).
+type LiveKitConfig struct {
+	// URL вида ws://host:7880 (локально) или wss://live.seeu.kz (прод).
+	URL       string `env:"LIVEKIT_URL"        env-default:"ws://172.20.10.3:7880"`
+	APIKey    string `env:"LIVEKIT_API_KEY"    env-default:""`
+	APISecret string `env:"LIVEKIT_API_SECRET" env-default:""`
+}
+
+func (c LiveKitConfig) IsConfigured() bool {
+	return c.URL != "" && c.APIKey != "" && c.APISecret != ""
 }
 
 // DeviceConfig — параметры генерации BLE-устройств.
@@ -26,6 +43,35 @@ type Config struct {
 // В dev можно любую строку; в продакшне — минимум 32 случайных байта.
 type DeviceConfig struct {
 	Secret string `env:"SEEU_DEVICE_SECRET" env-default:"dev-device-secret-change-in-prod"`
+}
+
+// MediaWorkerConfig holds settings for the asynchronous media processing worker.
+type MediaWorkerConfig struct {
+	Enabled              bool   `env:"MEDIA_WORKER_ENABLED" env-default:"false"`
+	FFmpegPath           string `env:"FFMPEG_PATH" env-default:"ffmpeg"`
+	FFprobePath          string `env:"FFPROBE_PATH" env-default:"ffprobe"`
+	TempDir              string `env:"MEDIA_TEMP_DIR" env-default:""`
+	OriginalSoundFormat  string `env:"ORIGINAL_SOUND_FORMAT" env-default:"m4a"`
+	OriginalSoundBitrate string `env:"ORIGINAL_SOUND_BITRATE" env-default:"128k"`
+	PollIntervalSecs     int    `env:"MEDIA_WORKER_POLL_INTERVAL_SECS" env-default:"5"`
+
+	MixEnabled               bool   `env:"MEDIA_MIX_ENABLED" env-default:"false"`
+	MixMaxDurationSeconds    int    `env:"MEDIA_MIX_MAX_DURATION_SECONDS" env-default:"600"`
+	MixOutputBitrate         string `env:"MEDIA_MIX_OUTPUT_BITRATE" env-default:"128k"`
+	MixCommandTimeoutSeconds int    `env:"MEDIA_MIX_COMMAND_TIMEOUT_SECONDS" env-default:"900"`
+	MixJobMaxAttempts        int    `env:"MEDIA_MIX_JOB_MAX_ATTEMPTS" env-default:"2"`
+
+	HLSEnabled               bool   `env:"MEDIA_HLS_ENABLED" env-default:"false"`
+	HLSMaxDurationSeconds    int    `env:"MEDIA_HLS_MAX_DURATION_SECONDS" env-default:"900"`
+	HLSJobMaxAttempts        int    `env:"MEDIA_HLS_JOB_MAX_ATTEMPTS" env-default:"2"`
+	HLSCommandTimeoutSeconds int    `env:"MEDIA_HLS_COMMAND_TIMEOUT_SECONDS" env-default:"1200"`
+	HLSSegmentSeconds        int    `env:"MEDIA_HLS_SEGMENT_SECONDS" env-default:"4"`
+	HLSBitrate1080           string `env:"MEDIA_HLS_OUTPUT_BITRATE_1080" env-default:"5000k"`
+	HLSBitrate720            string `env:"MEDIA_HLS_OUTPUT_BITRATE_720" env-default:"2800k"`
+	HLSBitrate480            string `env:"MEDIA_HLS_OUTPUT_BITRATE_480" env-default:"1200k"`
+
+	StuckJobTimeoutMinutes    int `env:"MEDIA_WORKER_STUCK_JOB_TIMEOUT_MINUTES" env-default:"20"`
+	StuckJobSweepIntervalSecs int `env:"MEDIA_WORKER_STUCK_JOB_SWEEP_INTERVAL_SECONDS" env-default:"60"`
 }
 
 type AppConfig struct {
@@ -86,11 +132,7 @@ type OTPConfig struct {
 //  2. .env.<APP_ENV> in the current directory.
 //  3. defaults declared in struct tags.
 func Load() (*Config, error) {
-	envName := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	if envName == "" {
-		envName = "local"
-	}
-	return LoadFrom(".env." + envName)
+	return LoadFrom(".env")
 }
 
 func LoadFrom(envFile string) (*Config, error) {

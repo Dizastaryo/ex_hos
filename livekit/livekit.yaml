@@ -1,0 +1,27 @@
+# LiveKit — ЛОКАЛЬНЫЙ конфиг (без докера).
+#
+# Запуск (бинарник, см. README.md):
+#   livekit-server --config ./livekit/livekit.yaml
+#
+# Телефон и ноут должны быть в одной Wi-Fi сети. URL для приложения:
+#   ws://<LAN-IP-ноута>:7880   (по умолчанию 172.20.10.3 — как в app_config.dart)
+#
+# Ключи ДОЛЖНЫ совпадать с .env бэкенда (LIVEKIT_API_KEY / LIVEKIT_API_SECRET).
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # ЛОКАЛЬНО: не запрашивать внешний IP через STUN — клиенты в той же LAN
+  # подключаются по локальному адресу ноута. В проде ставим true.
+  use_external_ip: false
+
+keys:
+  # dev-ключи. В проде — другие, через env (см. livekit.prod.yaml).
+  seeu_dev_key: seeu_dev_secret_change_me_0123456789abcdef
+
+logging:
+  level: info

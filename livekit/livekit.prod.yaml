@@ -1,0 +1,23 @@
+# LiveKit — ПРОДАКШЕН конфиг (через docker-compose.prod.yml).
+#
+# Ключи и внешний IP подставляются из окружения docker-compose
+# (LIVEKIT_KEYS, NODE_IP). НЕ коммитить реальные секреты.
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  # В проде сервер за NAT/в облаке — пусть определит публичный IP через STUN,
+  # либо задать явно node_ip: <PUBLIC_IP>.
+  use_external_ip: true
+
+# keys подставляются через переменную окружения LIVEKIT_KEYS в формате
+#   LIVEKIT_KEYS: "APIKey: APISecret"
+# (см. docker-compose.prod.yml). Для TLS (wss://) терминируем на nginx/caddy
+# перед LiveKit, либо включаем turn.tls с сертификатами.
+
+logging:
+  level: info
